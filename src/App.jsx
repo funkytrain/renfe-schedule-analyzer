@@ -8,6 +8,7 @@ const ScheduleAnalyzer = () => {
   const [optimizations, setOptimizations] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [incidenciaOverrides, setIncidenciaOverrides] = useState({}); // { día: 'clave' }
   
   const rawData = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
 101,LMXJV,TAXI,TAXI,SS,,,11:30,PAMPLONA,CASTEJON,12:30,,
@@ -90,6 +91,24 @@ const ScheduleAnalyzer = () => {
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
+
+  // Obtener claves disponibles para un día de la semana específico (excluyendo DESCANSO e INCIDENCIAS)
+  const getAvailableKeysForDay = (dayCode) => {
+    const availableKeys = [];
+    for (let key = 101; key <= 115; key++) {
+      const keyStr = key.toString();
+      const keyData = data.filter(row => 
+        row.CLAVE === keyStr && 
+        matchesDayPattern(row.LMXJVSD, dayCode) &&
+        row.N_CIRC !== 'DESCANSO' &&
+        row.DESDE !== 'INCIDENCIAS'
+      );
+      if (keyData.length > 0) {
+        availableKeys.push(keyStr);
+      }
+    }
+    return availableKeys;
+  };
 
   const matchesDayPattern = (pattern, day) => {
     if (pattern === 'DIARIO') return true;
@@ -320,9 +339,20 @@ const ScheduleAnalyzer = () => {
       const dayCode = dayOrder[currentDayIndex];
       const keyStr = currentKey.toString();
       
-      const trainsForDay = data.filter(row => 
+      let trainsForDay = data.filter(row => 
         row.CLAVE === keyStr && matchesDayPattern(row.LMXJVSD, dayCode)
       );
+
+      // Verificar si es INCIDENCIAS y hay una sustitución definida
+      const isIncidencia = trainsForDay.length > 0 && trainsForDay[0].DESDE === 'INCIDENCIAS';
+      const hasOverride = incidenciaOverrides[day];
+
+      if (isIncidencia && hasOverride) {
+        // Usar la clave sustituta en lugar de INCIDENCIAS
+        trainsForDay = data.filter(row => 
+          row.CLAVE === hasOverride && matchesDayPattern(row.LMXJVSD, dayCode)
+        );
+      }
       
       if (trainsForDay.length > 0 && trainsForDay[0].N_CIRC === 'DESCANSO') {
         results.push({
@@ -360,7 +390,12 @@ const ScheduleAnalyzer = () => {
         
         results.push({
           day,
-          key: keyStr,
+          key: hasOverride || keyStr, // Mostrar la clave real usada
+          originalKey: keyStr, // Guardar la clave original del gráfico
+          dayCode, // Guardar el código del día para el selector
+          isIncidencia: isIncidencia && !hasOverride, // Es incidencia sin sustituir
+          wasIncidencia: isIncidencia, // Era originalmente incidencia
+          overrideKey: hasOverride || null, // Clave sustituta si existe
           dayName: dayMap[dayCode],
           type: 'TRABAJO',
           workedMinutes: effectiveMinutes + ssMinutes + totalRestMinutes,
@@ -389,7 +424,7 @@ const ScheduleAnalyzer = () => {
     return results;
   };
 
-  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear]);
+  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides]);
 
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
@@ -895,7 +930,73 @@ const ScheduleAnalyzer = () => {
         </div>
         </div>
       </div>
-
+      {/* Gestión de Incidencias */}
+      {(() => {
+        const incidenciaDays = monthAnalysis.filter(d => d.wasIncidencia);
+        if (incidenciaDays.length === 0) return null;
+        
+        return (
+          <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+              <span>🔄</span> Sustitución de Incidencias
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-600 mb-4">
+              Si el supervisor te ha asignado otra clave en algún día de incidencias, selecciónala aquí para actualizar el análisis.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {incidenciaDays.map((d) => {
+                const availableKeys = getAvailableKeysForDay(d.dayCode);
+                return (
+                  <div 
+                    key={d.day} 
+                    className={`p-3 rounded-lg border ${d.overrideKey ? 'bg-blue-50 border-blue-300' : 'bg-yellow-50 border-yellow-300'}`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-sm">
+                        Día {d.day} ({d.dayName})
+                      </span>
+                      <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
+                        Clave {d.originalKey}
+                      </span>
+                    </div>
+                    <select
+                      value={incidenciaOverrides[d.day] || ''}
+                      onChange={(e) => {
+                        const newOverrides = { ...incidenciaOverrides };
+                        if (e.target.value === '') {
+                          delete newOverrides[d.day];
+                        } else {
+                          newOverrides[d.day] = e.target.value;
+                        }
+                        setIncidenciaOverrides(newOverrides);
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm"
+                    >
+                      <option value="">INCIDENCIAS (8h)</option>
+                      {availableKeys.map(k => (
+                        <option key={k} value={k}>Clave {k}</option>
+                      ))}
+                    </select>
+                    {d.overrideKey && (
+                      <div className="mt-2 text-xs text-blue-600">
+                        ✓ Sustituida por clave {d.overrideKey}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {Object.keys(incidenciaOverrides).length > 0 && (
+              <button
+                onClick={() => setIncidenciaOverrides({})}
+                className="mt-4 text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Restablecer todas las incidencias
+              </button>
+            )}
+          </div>
+        );
+      })()}  
       {/* PESTAÑA: CUMPLIMIENTO DE NORMATIVA */}
       {activeTab === 'compliance' && (
         <div className="space-y-4 sm:space-y-6">
