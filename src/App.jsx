@@ -1,16 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
-const ScheduleAnalyzer = () => {
-  const [startingKey, setStartingKey] = useState('103');
-  const [startingDay, setStartingDay] = useState('S');
-  const [activeTab, setActiveTab] = useState('analysis');
-  const [optimizations, setOptimizations] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [incidenciaOverrides, setIncidenciaOverrides] = useState({}); // { día: 'clave' }
-  
-  const rawData = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
+const DEFAULT_CSV_DATA = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
 101,LMXJV,TAXI,TAXI,SS,,,11:30,PAMPLONA,CASTEJON,12:30,,
 101,LMXJV,18048,18048,T,,14:00,14:23,CASTEJON,MIRAFLORES,15:39,,
 101,LMXJV,18023,18023,T,,16:20,16:40,MIRAFLORES,PAMPLONA,19:06,19:21,
@@ -57,8 +48,20 @@ const ScheduleAnalyzer = () => {
 114,DIARIO,DESCANSO,,,,,,,,,,
 115,DIARIO,DESCANSO,,,,,,,,,,`;
 
+const ScheduleAnalyzer = () => {
+  const [startingKey, setStartingKey] = useState('103');
+  const [startingDay, setStartingDay] = useState('S');
+  const [activeTab, setActiveTab] = useState('analysis');
+  const [optimizations, setOptimizations] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [incidenciaOverrides, setIncidenciaOverrides] = useState({}); // { día: 'clave' }
+  const [csvData, setCsvData] = useState(DEFAULT_CSV_DATA);
+  const [csvFileName, setCsvFileName] = useState(null); // Para mostrar nombre del archivo cargado
+  const [delayOverrides, setDelayOverrides] = useState({}); // { día: minutosRetraso }
+
   const parseData = () => {
-    const lines = rawData.trim().split('\n');
+    const lines = csvData.trim().split('\n');
     const headers = lines[0].split(',');
     return lines.slice(1).map(line => {
       const values = line.split(',');
@@ -69,7 +72,7 @@ const ScheduleAnalyzer = () => {
     });
   };
 
-  const data = useMemo(() => parseData(), []);
+  const data = useMemo(() => parseData(), [csvData]);
 
   const dayMap = {
     'L': 'Lunes',
@@ -91,6 +94,33 @@ const ScheduleAnalyzer = () => {
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
+
+// Manejar carga de archivo CSV
+  const handleCSVUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      // Validar que tiene el formato esperado
+      const firstLine = content.split('\n')[0];
+      if (firstLine.includes('CLAVE') && firstLine.includes('LMXJVSD')) {
+        setCsvData(content);
+        setCsvFileName(file.name);
+        setIncidenciaOverrides({}); // Resetear sustituciones al cargar nuevo CSV
+      } else {
+        alert('El archivo CSV no tiene el formato esperado. Asegúrate de que contiene las columnas: CLAVE, LMXJVSD, N_CIRC, N_VENTA, SERV, IJ, PRES, SAL, DESDE, HASTA, LLEG, DEJ, FJ');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+    const handleResetCSV = () => {
+        setCsvData(DEFAULT_CSV_DATA);
+        setCsvFileName(null);
+        setIncidenciaOverrides({});
+    };
 
   // Obtener claves disponibles para un día de la semana específico (excluyendo DESCANSO e INCIDENCIAS)
   const getAvailableKeysForDay = (dayCode) => {
@@ -374,45 +404,57 @@ const ScheduleAnalyzer = () => {
           startTime: null,
           endTime: null
         });
-      } else if (trainsForDay.length > 0) {
-        const { effectiveMinutes, ssMinutes } = calculateEffectiveWorkTime(trainsForDay);
-        const rests = calculateRestBetweenTrains(trainsForDay);
-        const totalRestMinutes = rests.reduce((sum, r) => sum + r.minutes, 0);
-        const totalShiftMinutes = calculateTotalShiftDuration(trainsForDay);
-        const trainServiceMinutes = calculateTrainServiceTime(trainsForDay);
-        const endsInHotel = trainsForDay[trainsForDay.length - 1].FJ === 'HOTEL';
-        
-        // Trabajo efectivo ajustado según regla de esperas
-        const adjustedEffectiveMinutes = calculateAdjustedEffectiveTime(effectiveMinutes, rests);
-        
-        // Calcular horas de mayor dedicación (exceso sobre 9h naturales del turno)
-        const mayorDedicacionMinutes = Math.max(0, totalShiftMinutes - 540);
-        
-        results.push({
-          day,
-          key: hasOverride || keyStr, // Mostrar la clave real usada
-          originalKey: keyStr, // Guardar la clave original del gráfico
-          dayCode, // Guardar el código del día para el selector
-          isIncidencia: isIncidencia && !hasOverride, // Es incidencia sin sustituir
-          wasIncidencia: isIncidencia, // Era originalmente incidencia
-          overrideKey: hasOverride || null, // Clave sustituta si existe
-          dayName: dayMap[dayCode],
-          type: 'TRABAJO',
-          workedMinutes: effectiveMinutes + ssMinutes + totalRestMinutes,
-          effectiveMinutes, // Trabajo efectivo base (T/AUX)
-          adjustedEffectiveMinutes, // Trabajo efectivo con regla de esperas aplicada
-          ssMinutes,
-          totalShiftMinutes, // Duración total del turno (horas naturales)
-          trainServiceMinutes,
-          mayorDedicacionMinutes, // Exceso sobre 9h naturales
-          trains: trainsForDay,
-          rests,
-          endsInHotel,
-          isInResidence: !endsInHotel,
-          startTime: getDayStartTime(trainsForDay),
-          endTime: getDayEndTime(trainsForDay)
-        });
-      }
+    } else if (trainsForDay.length > 0) {
+      const { effectiveMinutes, ssMinutes } = calculateEffectiveWorkTime(trainsForDay);
+      const rests = calculateRestBetweenTrains(trainsForDay);
+      const totalRestMinutes = rests.reduce((sum, r) => sum + r.minutes, 0);
+      const totalShiftMinutes = calculateTotalShiftDuration(trainsForDay);
+      const trainServiceMinutes = calculateTrainServiceTime(trainsForDay);
+      const endsInHotel = trainsForDay[trainsForDay.length - 1].FJ === 'HOTEL';
+
+      // Trabajo efectivo ajustado según regla de esperas
+      const adjustedEffectiveMinutes = calculateAdjustedEffectiveTime(effectiveMinutes, rests);
+
+      // Obtener tiempos de inicio y fin
+      const startTime = getDayStartTime(trainsForDay);
+      const endTime = getDayEndTime(trainsForDay);  // <-- Definir ANTES de usar
+
+      // Aplicar retraso si existe
+      const delayMinutes = delayOverrides[day] || 0;
+      const adjustedTotalShiftMinutes = totalShiftMinutes + delayMinutes;
+      const adjustedEndTime = endTime !== null ? endTime + delayMinutes : null;
+
+      // Calcular mayor dedicación con el retraso
+      const adjustedMayorDedicacionMinutes = Math.max(0, adjustedTotalShiftMinutes - 540);
+
+      results.push({
+        day,
+        key: hasOverride || keyStr,
+        originalKey: keyStr,
+        dayCode,
+        isIncidencia: isIncidencia && !hasOverride,
+        wasIncidencia: isIncidencia,
+        overrideKey: hasOverride || null,
+        dayName: dayMap[dayCode],
+        type: 'TRABAJO',
+        workedMinutes: effectiveMinutes + ssMinutes + totalRestMinutes + delayMinutes,
+        effectiveMinutes,
+        adjustedEffectiveMinutes,
+        ssMinutes,
+        totalShiftMinutes: adjustedTotalShiftMinutes,
+        originalShiftMinutes: totalShiftMinutes,
+        trainServiceMinutes,
+        mayorDedicacionMinutes: adjustedMayorDedicacionMinutes,
+        delayMinutes,
+        trains: trainsForDay,
+        rests,
+        endsInHotel,
+        isInResidence: !endsInHotel,
+        startTime,
+        endTime: adjustedEndTime,
+        originalEndTime: endTime,
+      });
+    }
       
       currentKey++;
       if (currentKey > 115) currentKey = 101;
@@ -424,7 +466,7 @@ const ScheduleAnalyzer = () => {
     return results;
   };
 
-  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides]);
+  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides, delayOverrides]);
 
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
@@ -845,6 +887,41 @@ const ScheduleAnalyzer = () => {
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 bg-gray-50 min-h-screen">
       <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-gray-800">Análisis de Gráfico de Interventores Renfe - Pamplona</h1>
+        {/* Carga de CSV */}
+        <div className="bg-white p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors">
+                        📁 Cargar CSV
+                        <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleCSVUpload}
+                            className="hidden"
+                        />
+                    </label>
+                    {csvFileName && (
+                        <button
+                            onClick={handleResetCSV}
+                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors"
+                        >
+                            ↺ Restablecer
+                        </button>
+                    )}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">
+                    {csvFileName ? (
+                        <span className="flex items-center gap-1">
+                            <span className="text-green-600">✓</span>
+                            Archivo cargado: <strong>{csvFileName}</strong>
+                        </span>
+                    ) : (
+                        <span>Usando datos por defecto del gráfico</span>
+                    )}
+                </div>
+            </div>
+        </div>
+
       
       {/* Pestañas de navegación */}
       <div className="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
@@ -996,7 +1073,130 @@ const ScheduleAnalyzer = () => {
             )}
           </div>
         );
-      })()}  
+      })()}
+      {/* Gestión de Retrasos */}
+        {(() => {
+          const workDays = monthAnalysis.filter(d => d.type === 'TRABAJO');
+          if (workDays.length === 0) return null;
+
+          const daysWithDelays = workDays.filter(d => d.delayMinutes > 0);
+
+          return (
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                <span>⏱️</span> Retrasos y Tiempo Extra
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                Si algún día el tren llegó con retraso, indica los minutos extra trabajados para ajustar el cálculo de mayor dedicación y mermas.
+              </p>
+
+              {/* Resumen de retrasos */}
+              {daysWithDelays.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                  <div className="text-sm font-medium text-orange-800 mb-2">
+                    Retrasos registrados: {daysWithDelays.length} día(s)
+                  </div>
+                  <div className="text-xs text-orange-700">
+                    Total tiempo extra: {formatMinutes(daysWithDelays.reduce((sum, d) => sum + d.delayMinutes, 0))}
+                  </div>
+                </div>
+              )}
+
+              {/* Selector de día y minutos */}
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end mb-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium mb-1">Día:</label>
+                  <select
+                    id="delay-day-select"
+                    className="border rounded px-2 py-1.5 text-sm min-w-[150px]"
+                    defaultValue=""
+                  >
+                    <option value="">Seleccionar día...</option>
+                    {workDays.map(d => (
+                      <option key={d.day} value={d.day}>
+                        Día {d.day} ({d.dayName}) - Clave {d.key}
+                        {d.delayMinutes > 0 ? ` [+${d.delayMinutes}min]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium mb-1">Minutos de retraso:</label>
+                  <input
+                    id="delay-minutes-input"
+                    type="number"
+                    min="0"
+                    max="480"
+                    placeholder="Ej: 45"
+                    className="border rounded px-2 py-1.5 text-sm w-24"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const daySelect = document.getElementById('delay-day-select');
+                    const minutesInput = document.getElementById('delay-minutes-input');
+                    const day = parseInt(daySelect.value);
+                    const minutes = parseInt(minutesInput.value) || 0;
+
+                    if (!day) {
+                      alert('Selecciona un día');
+                      return;
+                    }
+
+                    const newDelays = { ...delayOverrides };
+                    if (minutes > 0) {
+                      newDelays[day] = minutes;
+                    } else {
+                      delete newDelays[day];
+                    }
+                    setDelayOverrides(newDelays);
+
+                    // Limpiar inputs
+                    daySelect.value = '';
+                    minutesInput.value = '';
+                  }}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors"
+                >
+                  Aplicar
+                </button>
+              </div>
+
+              {/* Lista de retrasos aplicados */}
+              {daysWithDelays.length > 0 && (
+                <div className="border-t pt-3">
+                  <div className="text-xs sm:text-sm font-medium mb-2">Retrasos aplicados:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {daysWithDelays.map(d => (
+                      <div
+                        key={d.day}
+                        className="bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs sm:text-sm flex items-center gap-2"
+                      >
+                        <span>Día {d.day}: +{d.delayMinutes}min</span>
+                        <button
+                          onClick={() => {
+                            const newDelays = { ...delayOverrides };
+                            delete newDelays[d.day];
+                            setDelayOverrides(newDelays);
+                          }}
+                          className="text-orange-600 hover:text-orange-800 font-bold"
+                          title="Eliminar retraso"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setDelayOverrides({})}
+                    className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Eliminar todos los retrasos
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       {/* PESTAÑA: CUMPLIMIENTO DE NORMATIVA */}
       {activeTab === 'compliance' && (
         <div className="space-y-4 sm:space-y-6">
@@ -1202,8 +1402,17 @@ const ScheduleAnalyzer = () => {
                           {!servicioOk && day.type !== 'DESCANSO' && ' ⚠️'}
                         </td>
                         <td className={`p-2 ${!turnoOk && day.type !== 'DESCANSO' ? 'text-red-600 font-bold' : ''}`}>
-                          {day.type === 'DESCANSO' ? '-' : formatMinutes(day.totalShiftMinutes)}
-                          {!turnoOk && day.type !== 'DESCANSO' && ' 🚨'}
+                          {day.type === 'DESCANSO' ? '-' : (
+                            <>
+                              {formatMinutes(day.totalShiftMinutes)}
+                              {day.delayMinutes > 0 && (
+                                <span className="text-orange-500 text-xs ml-1" title={`Incluye ${day.delayMinutes}min de retraso`}>
+                                  (+{day.delayMinutes}m)
+                                </span>
+                              )}
+                              {!turnoOk && ' 🚨'}
+                            </>
+                          )}
                         </td>
                         <td className={`p-2 ${hasMayorDedicacion ? 'text-orange-600 font-medium' : ''}`}>
                           {day.type === 'DESCANSO' ? '-' : (
