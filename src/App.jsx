@@ -6,6 +6,8 @@ const ScheduleAnalyzer = () => {
   const [startingDay, setStartingDay] = useState('S');
   const [activeTab, setActiveTab] = useState('analysis');
   const [optimizations, setOptimizations] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
   const rawData = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
 101,LMXJV,TAXI,TAXI,SS,,,11:30,PAMPLONA,CASTEJON,12:30,,
@@ -79,6 +81,15 @@ const ScheduleAnalyzer = () => {
   };
 
   const dayOrder = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  const getDaysInMonth = (month, year) => {
+  return new Date(year, month + 1, 0).getDate();
+  };
+
+  const monthNames = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
 
   const matchesDayPattern = (pattern, day) => {
     if (pattern === 'DIARIO') return true;
@@ -304,7 +315,8 @@ const ScheduleAnalyzer = () => {
     let currentKey = parseInt(startingKey);
     let currentDayIndex = dayOrder.indexOf(startingDay);
     
-    for (let day = 1; day <= 30; day++) {
+    const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+    for (let day = 1; day <= daysInMonth; day++) {
       const dayCode = dayOrder[currentDayIndex];
       const keyStr = currentKey.toString();
       
@@ -377,7 +389,7 @@ const ScheduleAnalyzer = () => {
     return results;
   };
 
-  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay]);
+  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear]);
 
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
@@ -831,7 +843,7 @@ const ScheduleAnalyzer = () => {
       </div>
       
       <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Configuración del análisis mensual</h2>
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Configuración del análisis - {monthNames[selectedMonth]} {selectedYear} ({getDaysInMonth(selectedMonth, selectedYear)} días)</h2>
         <div className="flex gap-3 sm:gap-4 flex-wrap">
           <div>
             <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Clave inicial:</label>
@@ -857,6 +869,30 @@ const ScheduleAnalyzer = () => {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Mes:</label>
+            <select 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="border rounded px-2 sm:px-3 py-1.5 sm:py-2 text-sm"
+            >
+              {monthNames.map((name, idx) => (
+                <option key={idx} value={idx}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Año:</label>
+            <select 
+              value={selectedYear} 
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="border rounded px-2 sm:px-3 py-1.5 sm:py-2 text-sm"
+            >
+              {[2024, 2025, 2026, 2027].map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+        </div>
         </div>
       </div>
 
