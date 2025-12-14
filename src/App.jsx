@@ -922,7 +922,22 @@ const ScheduleAnalyzer = () => {
             </div>
         </div>
 
-      
+        {/* Enlace a IA de Normativa */}
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
+          <p className="text-sm sm:text-base text-purple-800">
+            <span className="mr-2">🤖</span>
+            ¿Tienes alguna duda acerca de la Normativa Laboral de Renfe?{' '}
+            <a
+              href="https://notebooklm.google.com/notebook/dc223916-0d50-4f9e-91c0-68d311435f07"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-600 hover:text-purple-800 font-semibold underline"
+            >
+              Pregúntale a la IA ↗
+            </a>
+          </p>
+        </div>
+
       {/* Pestañas de navegación */}
       <div className="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex space-x-2 sm:space-x-4 min-w-max">
