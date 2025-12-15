@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import SeccionColapsable from "./SeccionColapsable";
+import CSVHelpModal from "./CSVHelpModal";
 
 
 const DEFAULT_CSV_DATA = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
@@ -59,6 +60,7 @@ const ScheduleAnalyzer = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [incidenciaOverrides, setIncidenciaOverrides] = useState({}); // { día: 'clave' }
   const [csvData, setCsvData] = useState(DEFAULT_CSV_DATA);
+  const [showCSVHelp, setShowCSVHelp] = useState(false); // Muestra la ayuda del CSV
   const [csvFileName, setCsvFileName] = useState(null); // Para mostrar nombre del archivo cargado
   const [delayOverrides, setDelayOverrides] = useState({}); // { día: minutosRetraso }
 
@@ -902,6 +904,14 @@ const ScheduleAnalyzer = () => {
                             className="hidden"
                         />
                     </label>
+
+                    {/* BOTÓN AYUDA (nuevo) */}
+                    <button
+                      onClick={() => setShowCSVHelp(true)}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      ❓ Ayuda CSV
+                    </button>
                     {csvFileName && (
                         <button
                             onClick={handleResetCSV}
@@ -1694,6 +1704,9 @@ const ScheduleAnalyzer = () => {
             </div>
           </SeccionColapsable>
         </>
+      )}
+      {showCSVHelp && (
+        <CSVHelpModal onClose={() => setShowCSVHelp(false)} />
       )}
     </div>
   );
