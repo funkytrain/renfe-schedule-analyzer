@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import SeccionColapsable from "./SeccionColapsable";
+
 
 const DEFAULT_CSV_DATA = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
 101,LMXJV,TAXI,TAXI,SS,,,11:30,PAMPLONA,CASTEJON,12:30,,
@@ -1028,10 +1030,7 @@ const ScheduleAnalyzer = () => {
         if (incidenciaDays.length === 0) return null;
         
         return (
-          <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-              <span>🔄</span> Sustitución de Incidencias
-            </h2>
+          <SeccionColapsable titulo="Sustitución de Incidencias" icono="🔄">
             <p className="text-xs sm:text-sm text-gray-600 mb-4">
               Si el supervisor te ha asignado otra clave en algún día de incidencias, selecciónala aquí para actualizar el análisis.
             </p>
@@ -1086,7 +1085,7 @@ const ScheduleAnalyzer = () => {
                 Restablecer todas las incidencias
               </button>
             )}
-          </div>
+          </SeccionColapsable>
         );
       })()}
       {/* Gestión de Retrasos */}
@@ -1097,10 +1096,7 @@ const ScheduleAnalyzer = () => {
           const daysWithDelays = workDays.filter(d => d.delayMinutes > 0);
 
           return (
-            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
-              <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-                <span>⏱️</span> Retrasos y Tiempo Extra
-              </h2>
+            <SeccionColapsable titulo="Retrasos y Tiempo Extra" icono="⏱️">
               <p className="text-xs sm:text-sm text-gray-600 mb-4">
                 Si algún día el tren llegó con retraso, indica los minutos extra trabajados para ajustar el cálculo de mayor dedicación y mermas.
               </p>
@@ -1209,7 +1205,7 @@ const ScheduleAnalyzer = () => {
                   </button>
                 </div>
               )}
-            </div>
+            </SeccionColapsable>
           );
         })()}
       {/* PESTAÑA: CUMPLIMIENTO DE NORMATIVA */}
@@ -1369,8 +1365,7 @@ const ScheduleAnalyzer = () => {
           )}
           
           {/* Detalle de jornadas por día */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4">📅 Detalle de Jornadas y Cumplimiento</h3>
+          <SeccionColapsable titulo="Detalle de Jornadas y Cumplimiento" icono="📅">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
@@ -1452,11 +1447,10 @@ const ScheduleAnalyzer = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SeccionColapsable>
           
           {/* Referencia de normativa */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4">📖 Referencia de Normativa Aplicada</h3>
+          <SeccionColapsable titulo="Referencia de Normativa Aplicada" icono="📖">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="p-4 bg-blue-50 rounded-lg">
                 <h4 className="font-semibold text-blue-800 mb-2">Jornada Máxima Diaria (Trabajo Efectivo)</h4>
@@ -1500,7 +1494,7 @@ const ScheduleAnalyzer = () => {
                 </ul>
               </div>
             </div>
-          </div>
+          </SeccionColapsable>
         </div>
       )}
 
@@ -1559,8 +1553,7 @@ const ScheduleAnalyzer = () => {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Análisis de tiempos de espera entre trenes</h2>
+          <SeccionColapsable titulo="Análisis de tiempos de espera entre trenes">
             <p className="text-gray-700 mb-2">
               <strong>Tiempo total de espera en el mes:</strong> {formatMinutes(Math.round(monthlyStats.totalRestMinutes))} ({monthlyStats.totalRestHours}h)
             </p>
@@ -1594,10 +1587,9 @@ const ScheduleAnalyzer = () => {
                 <li>Evaluar si algunos SS se pueden eliminar o sustituir</li>
               </ul>
             </div>
-          </div>
+          </SeccionColapsable>
 
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Detalle completo del mes</h2>
+         <SeccionColapsable titulo="Detalle completo del mes">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
@@ -1645,10 +1637,9 @@ const ScheduleAnalyzer = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SeccionColapsable>
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Análisis y recomendaciones</h2>
+          <SeccionColapsable titulo="Análisis y recomendaciones">
             <div className="space-y-4 text-gray-700">
               <div>
                 <h3 className="font-semibold text-lg mb-2">📊 Desglose completo de horas:</h3>
@@ -1701,7 +1692,7 @@ const ScheduleAnalyzer = () => {
                 </ul>
               </div>
             </div>
-          </div>
+          </SeccionColapsable>
         </>
       )}
     </div>
