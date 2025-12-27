@@ -1,13 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import SeccionColapsable from "./SeccionColapsable";
+import CSVHelpModal from "./CSVHelpModal";
 
-const ScheduleAnalyzer = () => {
-  const [startingKey, setStartingKey] = useState('103');
-  const [startingDay, setStartingDay] = useState('S');
-  const [activeTab, setActiveTab] = useState('analysis');
-  const [optimizations, setOptimizations] = useState([]);
-  
-  const rawData = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
+
+const DEFAULT_CSV_DATA = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
 101,LMXJV,TAXI,TAXI,SS,,,11:30,PAMPLONA,CASTEJON,12:30,,
 101,LMXJV,18048,18048,T,,14:00,14:23,CASTEJON,MIRAFLORES,15:39,,
 101,LMXJV,18023,18023,T,,16:20,16:40,MIRAFLORES,PAMPLONA,19:06,19:21,
@@ -54,8 +51,21 @@ const ScheduleAnalyzer = () => {
 114,DIARIO,DESCANSO,,,,,,,,,,
 115,DIARIO,DESCANSO,,,,,,,,,,`;
 
+const ScheduleAnalyzer = () => {
+  const [startingKey, setStartingKey] = useState('103');
+  const [startingDay, setStartingDay] = useState('S');
+  const [activeTab, setActiveTab] = useState('analysis');
+  const [optimizations, setOptimizations] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [incidenciaOverrides, setIncidenciaOverrides] = useState({}); // { día: 'clave' }
+  const [csvData, setCsvData] = useState(DEFAULT_CSV_DATA);
+  const [showCSVHelp, setShowCSVHelp] = useState(false); // Muestra la ayuda del CSV
+  const [csvFileName, setCsvFileName] = useState(null); // Para mostrar nombre del archivo cargado
+  const [delayOverrides, setDelayOverrides] = useState({}); // { día: minutosRetraso }
+
   const parseData = () => {
-    const lines = rawData.trim().split('\n');
+    const lines = csvData.trim().split('\n');
     const headers = lines[0].split(',');
     return lines.slice(1).map(line => {
       const values = line.split(',');
@@ -66,7 +76,7 @@ const ScheduleAnalyzer = () => {
     });
   };
 
-  const data = useMemo(() => parseData(), []);
+  const data = useMemo(() => parseData(), [csvData]);
 
   const dayMap = {
     'L': 'Lunes',
@@ -79,6 +89,60 @@ const ScheduleAnalyzer = () => {
   };
 
   const dayOrder = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  const getDaysInMonth = (month, year) => {
+  return new Date(year, month + 1, 0).getDate();
+  };
+
+  const monthNames = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+// Manejar carga de archivo CSV
+  const handleCSVUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      // Validar que tiene el formato esperado
+      const firstLine = content.split('\n')[0];
+      if (firstLine.includes('CLAVE') && firstLine.includes('LMXJVSD')) {
+        setCsvData(content);
+        setCsvFileName(file.name);
+        setIncidenciaOverrides({}); // Resetear sustituciones al cargar nuevo CSV
+      } else {
+        alert('El archivo CSV no tiene el formato esperado. Asegúrate de que contiene las columnas: CLAVE, LMXJVSD, N_CIRC, N_VENTA, SERV, IJ, PRES, SAL, DESDE, HASTA, LLEG, DEJ, FJ');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+    const handleResetCSV = () => {
+        setCsvData(DEFAULT_CSV_DATA);
+        setCsvFileName(null);
+        setIncidenciaOverrides({});
+    };
+
+  // Obtener claves disponibles para un día de la semana específico (excluyendo DESCANSO e INCIDENCIAS)
+  const getAvailableKeysForDay = (dayCode) => {
+    const availableKeys = [];
+    for (let key = 101; key <= 115; key++) {
+      const keyStr = key.toString();
+      const keyData = data.filter(row => 
+        row.CLAVE === keyStr && 
+        matchesDayPattern(row.LMXJVSD, dayCode) &&
+        row.N_CIRC !== 'DESCANSO' &&
+        row.DESDE !== 'INCIDENCIAS'
+      );
+      if (keyData.length > 0) {
+        availableKeys.push(keyStr);
+      }
+    }
+    return availableKeys;
+  };
 
   const matchesDayPattern = (pattern, day) => {
     if (pattern === 'DIARIO') return true;
@@ -304,13 +368,25 @@ const ScheduleAnalyzer = () => {
     let currentKey = parseInt(startingKey);
     let currentDayIndex = dayOrder.indexOf(startingDay);
     
-    for (let day = 1; day <= 30; day++) {
+    const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+    for (let day = 1; day <= daysInMonth; day++) {
       const dayCode = dayOrder[currentDayIndex];
       const keyStr = currentKey.toString();
       
-      const trainsForDay = data.filter(row => 
+      let trainsForDay = data.filter(row => 
         row.CLAVE === keyStr && matchesDayPattern(row.LMXJVSD, dayCode)
       );
+
+      // Verificar si es INCIDENCIAS y hay una sustitución definida
+      const isIncidencia = trainsForDay.length > 0 && trainsForDay[0].DESDE === 'INCIDENCIAS';
+      const hasOverride = incidenciaOverrides[day];
+
+      if (isIncidencia && hasOverride) {
+        // Usar la clave sustituta en lugar de INCIDENCIAS
+        trainsForDay = data.filter(row => 
+          row.CLAVE === hasOverride && matchesDayPattern(row.LMXJVSD, dayCode)
+        );
+      }
       
       if (trainsForDay.length > 0 && trainsForDay[0].N_CIRC === 'DESCANSO') {
         results.push({
@@ -332,40 +408,60 @@ const ScheduleAnalyzer = () => {
           startTime: null,
           endTime: null
         });
-      } else if (trainsForDay.length > 0) {
-        const { effectiveMinutes, ssMinutes } = calculateEffectiveWorkTime(trainsForDay);
-        const rests = calculateRestBetweenTrains(trainsForDay);
-        const totalRestMinutes = rests.reduce((sum, r) => sum + r.minutes, 0);
-        const totalShiftMinutes = calculateTotalShiftDuration(trainsForDay);
-        const trainServiceMinutes = calculateTrainServiceTime(trainsForDay);
-        const endsInHotel = trainsForDay[trainsForDay.length - 1].FJ === 'HOTEL';
-        
-        // Trabajo efectivo ajustado según regla de esperas
-        const adjustedEffectiveMinutes = calculateAdjustedEffectiveTime(effectiveMinutes, rests);
-        
-        // Calcular horas de mayor dedicación (exceso sobre 9h naturales del turno)
-        const mayorDedicacionMinutes = Math.max(0, totalShiftMinutes - 540);
-        
-        results.push({
-          day,
-          key: keyStr,
-          dayName: dayMap[dayCode],
-          type: 'TRABAJO',
-          workedMinutes: effectiveMinutes + ssMinutes + totalRestMinutes,
-          effectiveMinutes, // Trabajo efectivo base (T/AUX)
-          adjustedEffectiveMinutes, // Trabajo efectivo con regla de esperas aplicada
-          ssMinutes,
-          totalShiftMinutes, // Duración total del turno (horas naturales)
-          trainServiceMinutes,
-          mayorDedicacionMinutes, // Exceso sobre 9h naturales
-          trains: trainsForDay,
-          rests,
-          endsInHotel,
-          isInResidence: !endsInHotel,
-          startTime: getDayStartTime(trainsForDay),
-          endTime: getDayEndTime(trainsForDay)
-        });
-      }
+    } else if (trainsForDay.length > 0) {
+      const { effectiveMinutes, ssMinutes } = calculateEffectiveWorkTime(trainsForDay);
+      const rests = calculateRestBetweenTrains(trainsForDay);
+      const totalRestMinutes = rests.reduce((sum, r) => sum + r.minutes, 0);
+      const totalShiftMinutes = calculateTotalShiftDuration(trainsForDay);
+      const trainServiceMinutes = calculateTrainServiceTime(trainsForDay);
+      const endsInHotel = trainsForDay[trainsForDay.length - 1].FJ === 'HOTEL';
+
+      // Trabajo efectivo ajustado según regla de esperas
+      const adjustedEffectiveMinutes = calculateAdjustedEffectiveTime(effectiveMinutes, rests);
+
+      // Obtener tiempos de inicio y fin
+      const startTime = getDayStartTime(trainsForDay);
+      const endTime = getDayEndTime(trainsForDay);  // <-- Definir ANTES de usar
+
+      // Aplicar retraso si existe
+      const delayMinutes = delayOverrides[day] || 0;
+      const adjustedTotalShiftMinutes = totalShiftMinutes + delayMinutes;
+      const adjustedEndTime = endTime !== null ? endTime + delayMinutes : null;
+
+      // Calcular mayor dedicación con el retraso (umbral: 8h 13min = 493 min)
+      const adjustedMayorDedicacionMinutes = Math.max(0, adjustedTotalShiftMinutes - 493);
+
+      results.push({
+        day,
+        key: hasOverride || keyStr,
+        originalKey: keyStr,
+        dayCode,
+        isIncidencia: isIncidencia && !hasOverride,
+        wasIncidencia: isIncidencia,
+        overrideKey: hasOverride || null,
+        dayName: dayMap[dayCode],
+        type: 'TRABAJO',
+        workedMinutes: effectiveMinutes + ssMinutes + totalRestMinutes + delayMinutes,
+        effectiveMinutes,
+        adjustedEffectiveMinutes,
+        ssMinutes,
+        totalShiftMinutes: adjustedTotalShiftMinutes,
+        originalShiftMinutes: totalShiftMinutes,
+        trainServiceMinutes,
+        mayorDedicacionMinutes: adjustedMayorDedicacionMinutes,
+        delayMinutes,
+        trains: trainsForDay,
+        rests,
+        endsInHotel,
+        isInResidence: !endsInHotel,
+        startTime,
+        endTime: adjustedEndTime,
+        originalEndTime: endTime,
+        // Información de pernocta para el día anterior (si este día empieza desde hotel)
+        arrivalTimeFromPreviousDay: null, // Se calculará después
+        departureTime: startTime, // Hora de salida de este día
+      });
+    }
       
       currentKey++;
       if (currentKey > 115) currentKey = 101;
@@ -377,7 +473,125 @@ const ScheduleAnalyzer = () => {
     return results;
   };
 
-  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay]);
+  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides, delayOverrides]);
+  // Calcular información de pernoctas (noches en hotel con tiempos de descanso)
+  const pernoctasAnalysis = useMemo(() => {
+  const pernoctas = [];
+
+  for (let i = 0; i < monthAnalysis.length - 1; i++) {
+    const currentDay = monthAnalysis[i];
+    const nextDay = monthAnalysis[i + 1];
+
+    // Solo si el día actual termina en hotel
+    if (currentDay.endsInHotel && currentDay.type === 'TRABAJO' && nextDay.type === 'TRABAJO') {
+      const llegada = currentDay.endTime; // Ya incluye retrasos si los hay
+      const salida = nextDay.startTime;
+
+      // Calcular descanso: desde fin hasta medianoche + desde medianoche hasta inicio
+      let descansoMinutos = 0;
+      if (llegada !== null && salida !== null) {
+        descansoMinutos = (24 * 60 - llegada) + salida;
+      }
+
+      // Determinar ubicación (último destino del día)
+      const lastTrain = currentDay.trains[currentDay.trains.length - 1];
+      const ubicacion = lastTrain?.HASTA || 'Desconocido';
+      const esResidencia = ubicacion.toUpperCase().includes('PAMPLONA');
+
+      // Determinar estado según umbrales
+      let estado = 'OK';
+      let esMerma = false;
+      let esEmpalme = false;
+
+      if (esResidencia) {
+        if (descansoMinutos < 600) { // < 10h
+          estado = 'EMPALME';
+          esEmpalme = true;
+        } else if (descansoMinutos < 840) { // < 14h
+          estado = 'MERMA';
+          esMerma = true;
+        }
+      } else {
+        if (descansoMinutos < 360) { // < 6h
+          estado = 'EMPALME';
+          esEmpalme = true;
+        } else if (descansoMinutos < 540) { // < 9h
+          estado = 'MERMA';
+          esMerma = true;
+        }
+      }
+
+      pernoctas.push({
+        dia: currentDay.day,
+        diaSiguiente: nextDay.day,
+        ubicacion,
+        esResidencia,
+        llegada,
+        salida,
+        descansoMinutos,
+        estado,
+        esMerma,
+        esEmpalme,
+        claveActual: currentDay.key,
+        claveSiguiente: nextDay.key,
+        retrasoAplicado: currentDay.delayMinutes || 0
+      });
+    }
+  }
+
+  return pernoctas;
+}, [monthAnalysis]);
+
+// Calcular horas extra por ciclo (exceso sobre 36h 05min cada 5 días trabajados)
+const horasExtraCiclo = useMemo(() => {
+  const ciclos = [];
+  let cicloActual = [];
+  let diasTrabajadosEnCiclo = 0;
+
+  for (const day of monthAnalysis) {
+    if (day.type === 'TRABAJO') {
+      cicloActual.push(day);
+      diasTrabajadosEnCiclo++;
+
+      // Cada 5 días trabajados es un ciclo
+      if (diasTrabajadosEnCiclo === 5) {
+        const totalMinutosCiclo = cicloActual.reduce((sum, d) => sum + d.totalShiftMinutes, 0);
+        const horasExtraMinutos = Math.max(0, totalMinutosCiclo - 2165); // 36h 05min = 2165 min
+
+        ciclos.push({
+          dias: cicloActual.map(d => d.day),
+          totalMinutos: totalMinutosCiclo,
+          horasExtraMinutos,
+          claves: cicloActual.map(d => d.key)
+        });
+
+        cicloActual = [];
+        diasTrabajadosEnCiclo = 0;
+      }
+    }
+  }
+
+  // Ciclo incompleto al final del mes
+  if (cicloActual.length > 0) {
+    const totalMinutosCiclo = cicloActual.reduce((sum, d) => sum + d.totalShiftMinutes, 0);
+    // Para ciclos incompletos, calcular proporcionalmente: (36h 05min / 5) * días trabajados
+    const limiteProrrateado = Math.round((2165 / 5) * cicloActual.length);
+    const horasExtraMinutos = Math.max(0, totalMinutosCiclo - limiteProrrateado);
+
+    ciclos.push({
+      dias: cicloActual.map(d => d.day),
+      totalMinutos: totalMinutosCiclo,
+      horasExtraMinutos,
+      claves: cicloActual.map(d => d.key),
+      incompleto: true
+    });
+  }
+
+  return {
+    ciclos,
+    totalHorasExtra: ciclos.reduce((sum, c) => sum + c.horasExtraMinutos, 0)
+  };
+}, [monthAnalysis]);
 
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
@@ -394,6 +608,10 @@ const ScheduleAnalyzer = () => {
       descansoDesvinculadoViolations: 0,
       totalMayorDedicacion: 0,
       totalMermaDescanso: 0,
+      totalHorasExtra: 0, // NUEVO
+      totalEmpalmes: 0, // NUEVO
+      mermaPernoctaResidencia: 0, // NUEVO
+      mermaPernoctaFuera: 0, // NUEVO
       limiteMensualExceeded: false
     };
     
@@ -406,6 +624,13 @@ const ScheduleAnalyzer = () => {
       if (day.type === 'DESCANSO') continue;
       
       const jornadaMaxima = 540; // 9 horas en minutos
+      const mayorDedicacionUmbral = 493; // 8h 13min en minutos
+      const jornadaMaximaCiclo = 2165; // 36h 05min en minutos (para horas extra)
+      const descansoSemanalMinimo = 3720; // 62 horas en minutos
+      const descansoMinimoResidencia = 840; // 14 horas en minutos
+      const descansoEmpalmeResidencia = 600; // 10 horas en minutos
+      const descansoMinimoFueraResidencia = 540; // 9 horas en minutos
+      const descansoEmpalmeFueraResidencia = 360; // 6 horas en minutos
       const turnoMaximo = 660; // 11 horas en minutos
       
       // Mayor dedicación: exceso sobre 9h naturales del turno (ya precalculado)
@@ -574,7 +799,7 @@ const ScheduleAnalyzer = () => {
             actualRestMinutes += day.startTime;
           }
           
-          const descansoSemanalMinimo = 60 * 60; // 60 horas
+          const descansoSemanalMinimo = 62 * 60; // 62 horas (Art. 2.49)
           
           if (actualRestMinutes < descansoSemanalMinimo) {
             summary.descansoSemanalViolations++;
@@ -798,7 +1023,65 @@ const ScheduleAnalyzer = () => {
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 bg-gray-50 min-h-screen">
       <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-gray-800">Análisis de Gráfico de Interventores Renfe - Pamplona</h1>
-      
+        {/* Carga de CSV */}
+        <div className="bg-white p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors">
+                        📁 Cargar CSV
+                        <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleCSVUpload}
+                            className="hidden"
+                        />
+                    </label>
+
+                    {/* BOTÓN AYUDA (nuevo) */}
+                    <button
+                      onClick={() => setShowCSVHelp(true)}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      ❓ Ayuda CSV
+                    </button>
+                    {csvFileName && (
+                        <button
+                            onClick={handleResetCSV}
+                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors"
+                        >
+                            ↺ Restablecer
+                        </button>
+                    )}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">
+                    {csvFileName ? (
+                        <span className="flex items-center gap-1">
+                            <span className="text-green-600">✓</span>
+                            Archivo cargado: <strong>{csvFileName}</strong>
+                        </span>
+                    ) : (
+                        <span>Usando datos por defecto del gráfico</span>
+                    )}
+                </div>
+            </div>
+        </div>
+
+        {/* Enlace a IA de Normativa */}
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
+          <p className="text-sm sm:text-base text-purple-800">
+            <span className="mr-2">🤖</span>
+            ¿Tienes alguna duda acerca de la Normativa Laboral de Renfe?{' '}
+            <a
+              href="https://notebooklm.google.com/notebook/dc223916-0d50-4f9e-91c0-68d311435f07"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-600 hover:text-purple-800 font-semibold underline"
+            >
+              Pregúntale a la IA ↗
+            </a>
+          </p>
+        </div>
+
       {/* Pestañas de navegación */}
       <div className="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex space-x-2 sm:space-x-4 min-w-max">
@@ -831,7 +1114,7 @@ const ScheduleAnalyzer = () => {
       </div>
       
       <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Configuración del análisis mensual</h2>
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Configuración del análisis - {monthNames[selectedMonth]} {selectedYear} ({getDaysInMonth(selectedMonth, selectedYear)} días)</h2>
         <div className="flex gap-3 sm:gap-4 flex-wrap">
           <div>
             <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Clave inicial:</label>
@@ -857,9 +1140,381 @@ const ScheduleAnalyzer = () => {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Mes:</label>
+            <select 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="border rounded px-2 sm:px-3 py-1.5 sm:py-2 text-sm"
+            >
+              {monthNames.map((name, idx) => (
+                <option key={idx} value={idx}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Año:</label>
+            <select 
+              value={selectedYear} 
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="border rounded px-2 sm:px-3 py-1.5 sm:py-2 text-sm"
+            >
+              {[2024, 2025, 2026, 2027].map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+        </div>
         </div>
       </div>
+      {/* Gestión de Incidencias */}
+      {(() => {
+        const incidenciaDays = monthAnalysis.filter(d => d.wasIncidencia);
+        if (incidenciaDays.length === 0) return null;
+        
+        return (
+          <SeccionColapsable titulo="Sustitución de Incidencias" icono="🔄">
+            <p className="text-xs sm:text-sm text-gray-600 mb-4">
+              Si el supervisor te ha asignado otra clave en algún día de incidencias, selecciónala aquí para actualizar el análisis.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {incidenciaDays.map((d) => {
+                const availableKeys = getAvailableKeysForDay(d.dayCode);
+                return (
+                  <div 
+                    key={d.day} 
+                    className={`p-3 rounded-lg border ${d.overrideKey ? 'bg-blue-50 border-blue-300' : 'bg-yellow-50 border-yellow-300'}`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-sm">
+                        Día {d.day} ({d.dayName})
+                      </span>
+                      <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
+                        Clave {d.originalKey}
+                      </span>
+                    </div>
+                    <select
+                      value={incidenciaOverrides[d.day] || ''}
+                      onChange={(e) => {
+                        const newOverrides = { ...incidenciaOverrides };
+                        if (e.target.value === '') {
+                          delete newOverrides[d.day];
+                        } else {
+                          newOverrides[d.day] = e.target.value;
+                        }
+                        setIncidenciaOverrides(newOverrides);
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm"
+                    >
+                      <option value="">INCIDENCIAS (8h)</option>
+                      {availableKeys.map(k => (
+                        <option key={k} value={k}>Clave {k}</option>
+                      ))}
+                    </select>
+                    {d.overrideKey && (
+                      <div className="mt-2 text-xs text-blue-600">
+                        ✓ Sustituida por clave {d.overrideKey}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {Object.keys(incidenciaOverrides).length > 0 && (
+              <button
+                onClick={() => setIncidenciaOverrides({})}
+                className="mt-4 text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Restablecer todas las incidencias
+              </button>
+            )}
+          </SeccionColapsable>
+        );
+      })()}
+      {/* Gestión de Retrasos */}
+        {(() => {
+          const workDays = monthAnalysis.filter(d => d.type === 'TRABAJO');
+          if (workDays.length === 0) return null;
 
+          const daysWithDelays = workDays.filter(d => d.delayMinutes > 0);
+
+          return (
+            <SeccionColapsable titulo="Retrasos y Tiempo Extra" icono="⏱️">
+              <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                Si algún día el tren llegó con retraso, indica los minutos extra trabajados para ajustar el cálculo de mayor dedicación y mermas.
+              </p>
+
+              {/* Resumen de retrasos */}
+              {daysWithDelays.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                  <div className="text-sm font-medium text-orange-800 mb-2">
+                    Retrasos registrados: {daysWithDelays.length} día(s)
+                  </div>
+                  <div className="text-xs text-orange-700">
+                    Total tiempo extra: {formatMinutes(daysWithDelays.reduce((sum, d) => sum + d.delayMinutes, 0))}
+                  </div>
+                </div>
+              )}
+
+              {/* Selector de día y minutos */}
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end mb-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium mb-1">Día:</label>
+                  <select
+                    id="delay-day-select"
+                    className="border rounded px-2 py-1.5 text-sm min-w-[150px]"
+                    defaultValue=""
+                  >
+                    <option value="">Seleccionar día...</option>
+                    {workDays.map(d => (
+                      <option key={d.day} value={d.day}>
+                        Día {d.day} ({d.dayName}) - Clave {d.key}
+                        {d.delayMinutes > 0 ? ` [+${d.delayMinutes}min]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium mb-1">Minutos de retraso:</label>
+                  <input
+                    id="delay-minutes-input"
+                    type="number"
+                    min="0"
+                    max="480"
+                    placeholder="Ej: 45"
+                    className="border rounded px-2 py-1.5 text-sm w-24"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const daySelect = document.getElementById('delay-day-select');
+                    const minutesInput = document.getElementById('delay-minutes-input');
+                    const day = parseInt(daySelect.value);
+                    const minutes = parseInt(minutesInput.value) || 0;
+
+                    if (!day) {
+                      alert('Selecciona un día');
+                      return;
+                    }
+
+                    const newDelays = { ...delayOverrides };
+                    if (minutes > 0) {
+                      newDelays[day] = minutes;
+                    } else {
+                      delete newDelays[day];
+                    }
+                    setDelayOverrides(newDelays);
+
+                    // Limpiar inputs
+                    daySelect.value = '';
+                    minutesInput.value = '';
+                  }}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors"
+                >
+                  Aplicar
+                </button>
+              </div>
+
+              {/* Lista de retrasos aplicados */}
+              {daysWithDelays.length > 0 && (
+                <div className="border-t pt-3">
+                  <div className="text-xs sm:text-sm font-medium mb-2">Retrasos aplicados:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {daysWithDelays.map(d => (
+                      <div
+                        key={d.day}
+                        className="bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs sm:text-sm flex items-center gap-2"
+                      >
+                        <span>Día {d.day}: +{d.delayMinutes}min</span>
+                        <button
+                          onClick={() => {
+                            const newDelays = { ...delayOverrides };
+                            delete newDelays[d.day];
+                            setDelayOverrides(newDelays);
+                          }}
+                          className="text-orange-600 hover:text-orange-800 font-bold"
+                          title="Eliminar retraso"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setDelayOverrides({})}
+                    className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Eliminar todos los retrasos
+                  </button>
+                </div>
+              )}
+            </SeccionColapsable>
+          );
+        })()}
+
+        {/* Detalle de Pernoctas */}
+        {(() => {
+          if (pernoctasAnalysis.length === 0) return null;
+
+          return (
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                <span>🏨</span> Detalle de Pernoctas
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                Información de descansos en hotel con tiempos de llegada, salida y estado de merma/empalme.
+              </p>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-left">Día</th>
+                      <th className="p-2 text-left">Ubicación</th>
+                      <th className="p-2 text-left">Llegada</th>
+                      <th className="p-2 text-left">Salida (día+1)</th>
+                      <th className="p-2 text-left">Descanso</th>
+                      <th className="p-2 text-left">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pernoctasAnalysis.map((p, idx) => (
+                      <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${p.esEmpalme ? 'bg-red-50' : p.esMerma ? 'bg-yellow-50' : ''}`}>
+                        <td className="p-2">
+                          {p.dia} → {p.diaSiguiente}
+                          <div className="text-xs text-gray-500">Clave {p.claveActual}</div>
+                        </td>
+                        <td className="p-2">
+                          {p.ubicacion}
+                          {p.esResidencia && <span className="text-xs text-blue-600 ml-1">(Res.)</span>}
+                        </td>
+                        <td className="p-2">
+                          {p.llegada !== null ? `${Math.floor(p.llegada / 60).toString().padStart(2, '0')}:${(p.llegada % 60).toString().padStart(2, '0')}` : '-'}
+                          {p.retrasoAplicado > 0 && (
+                            <span className="text-orange-500 text-xs ml-1">(+{p.retrasoAplicado}m)</span>
+                          )}
+                        </td>
+                        <td className="p-2">
+                          {p.salida !== null ? `${Math.floor(p.salida / 60).toString().padStart(2, '0')}:${(p.salida % 60).toString().padStart(2, '0')}` : '-'}
+                        </td>
+                        <td className="p-2 font-medium">
+                          {formatMinutes(p.descansoMinutos)}
+                        </td>
+                        <td className="p-2">
+                          {p.esEmpalme ? (
+                            <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800 font-medium">
+                              🔴 EMPALME
+                            </span>
+                          ) : p.esMerma ? (
+                            <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800 font-medium">
+                              ⚠️ MERMA
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                              ✓ OK
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Resumen de pernoctas */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-green-50 p-3 rounded-lg text-center">
+                  <div className="text-lg font-bold text-green-600">
+                    {pernoctasAnalysis.filter(p => !p.esMerma && !p.esEmpalme).length}
+                  </div>
+                  <div className="text-xs text-green-800">Descansos OK</div>
+                </div>
+                <div className="bg-yellow-50 p-3 rounded-lg text-center">
+                  <div className="text-lg font-bold text-yellow-600">
+                    {pernoctasAnalysis.filter(p => p.esMerma).length}
+                  </div>
+                  <div className="text-xs text-yellow-800">Con Merma</div>
+                </div>
+                <div className="bg-red-50 p-3 rounded-lg text-center">
+                  <div className="text-lg font-bold text-red-600">
+                    {pernoctasAnalysis.filter(p => p.esEmpalme).length}
+                  </div>
+                  <div className="text-xs text-red-800">Empalmes</div>
+                </div>
+              </div>
+
+              {/* Leyenda de umbrales */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs">
+                <div className="font-medium mb-2">Umbrales de descanso:</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <strong>Fuera de residencia:</strong> Normal ≥9h | Merma &lt;9h y ≥6h | Empalme &lt;6h
+                  </div>
+                  <div>
+                    <strong>En residencia:</strong> Normal ≥14h | Merma &lt;14h y ≥10h | Empalme &lt;10h
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Horas Extra por Ciclo */}
+        {(() => {
+          if (horasExtraCiclo.ciclos.length === 0) return null;
+
+          return (
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                <span>⏰</span> Horas Extra por Ciclo (5 días)
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                Las horas extra se computan cuando se superan las 36h 05min de trabajo efectivo en un ciclo de 5 días.
+              </p>
+
+              <div className="space-y-3">
+                {horasExtraCiclo.ciclos.map((ciclo, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg border ${ciclo.horasExtraMinutos > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                      <div>
+                        <span className="font-medium">Ciclo {idx + 1}</span>
+                        {ciclo.incompleto && <span className="text-xs text-gray-500 ml-2">(incompleto)</span>}
+                        <div className="text-xs text-gray-600">
+                          Días: {ciclo.dias.join(', ')} | Claves: {ciclo.claves.join(', ')}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm">
+                          Total: <strong>{formatMinutes(ciclo.totalMinutos)}</strong>
+                        </div>
+                        {ciclo.horasExtraMinutos > 0 ? (
+                          <div className="text-red-600 font-medium">
+                            +{formatMinutes(ciclo.horasExtraMinutos)} horas extra
+                          </div>
+                        ) : (
+                          <div className="text-green-600 text-sm">Sin exceso</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {horasExtraCiclo.totalHorasExtra > 0 && (
+                <div className="mt-4 p-3 bg-red-100 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-sm text-red-800">Total Horas Extra del Mes</div>
+                    <div className="text-2xl font-bold text-red-600">
+                      {formatMinutes(horasExtraCiclo.totalHorasExtra)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       {/* PESTAÑA: CUMPLIMIENTO DE NORMATIVA */}
       {activeTab === 'compliance' && (
         <div className="space-y-4 sm:space-y-6">
@@ -1017,8 +1672,7 @@ const ScheduleAnalyzer = () => {
           )}
           
           {/* Detalle de jornadas por día */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4">📅 Detalle de Jornadas y Cumplimiento</h3>
+          <SeccionColapsable titulo="Detalle de Jornadas y Cumplimiento" icono="📅">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
@@ -1065,8 +1719,17 @@ const ScheduleAnalyzer = () => {
                           {!servicioOk && day.type !== 'DESCANSO' && ' ⚠️'}
                         </td>
                         <td className={`p-2 ${!turnoOk && day.type !== 'DESCANSO' ? 'text-red-600 font-bold' : ''}`}>
-                          {day.type === 'DESCANSO' ? '-' : formatMinutes(day.totalShiftMinutes)}
-                          {!turnoOk && day.type !== 'DESCANSO' && ' 🚨'}
+                          {day.type === 'DESCANSO' ? '-' : (
+                            <>
+                              {formatMinutes(day.totalShiftMinutes)}
+                              {day.delayMinutes > 0 && (
+                                <span className="text-orange-500 text-xs ml-1" title={`Incluye ${day.delayMinutes}min de retraso`}>
+                                  (+{day.delayMinutes}m)
+                                </span>
+                              )}
+                              {!turnoOk && ' 🚨'}
+                            </>
+                          )}
                         </td>
                         <td className={`p-2 ${hasMayorDedicacion ? 'text-orange-600 font-medium' : ''}`}>
                           {day.type === 'DESCANSO' ? '-' : (
@@ -1091,55 +1754,43 @@ const ScheduleAnalyzer = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SeccionColapsable>
           
           {/* Referencia de normativa */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4">📖 Referencia de Normativa Aplicada</h3>
+          <SeccionColapsable titulo="Referencia de Normativa Aplicada" icono="📖">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Jornada Máxima Diaria (Trabajo Efectivo)</h4>
-                <p>La duración máxima de la jornada ordinaria de trabajo efectivo es de <strong>9 horas</strong>.</p>
-                <p className="text-xs text-gray-600 mt-1">Nota: Si hay más de una espera, todas cuentan como trabajo efectivo excepto la más larga.</p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Servicio en Trenes</h4>
-                <p>La prestación de servicios o atención a trenes será como máximo de <strong>9 horas</strong> por jornada.</p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Límite Máximo del Turno</h4>
-                <p>Si el turno supera las <strong>11 horas naturales</strong> (desde inicio hasta fin, incluyendo esperas), el Interventor debe abandonar el servicio y actuar como Agente de Acompañamiento.</p>
+                <h4 className="font-semibold text-blue-800 mb-2">Jornada Máxima Diaria (Art. 2.21)</h4>
+                <p>La duración máxima es de <strong>9 horas</strong> de trabajo efectivo.</p>
+                <p className="text-xs text-gray-600 mt-1">Excepción: turnos de ida y regreso pueden ampliarse si la ida no excede 6h y no hay servicio anterior/posterior.</p>
               </div>
               <div className="p-4 bg-orange-50 rounded-lg">
                 <h4 className="font-semibold text-orange-800 mb-2">Mayor Dedicación</h4>
-                <p>El exceso sobre <strong>9 horas naturales</strong> del turno (desde inicio hasta fin). Las esperas alargan la jornada natural y contribuyen al cálculo.</p>
+                <p>Se computa a partir de <strong>8h 13min</strong> de jornada natural.</p>
+              </div>
+              <div className="p-4 bg-red-50 rounded-lg">
+                <h4 className="font-semibold text-red-800 mb-2">Horas Extra</h4>
+                <p>Se computan a partir de <strong>36h 05min</strong> por ciclo de 5 días trabajados.</p>
               </div>
               <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Descanso Semanal</h4>
-                <p>Mínimo <strong>60 horas</strong> de descanso, con 40h + 20h en residencia propia. Ciclo actual: 5 días trabajo, 3 descanso, 5 trabajo, 2 descanso.</p>
+                <h4 className="font-semibold text-blue-800 mb-2">Descanso Semanal (Art. 2.49)</h4>
+                <p>Mínimo <strong>62 horas</strong> continuadas (14h último descanso + 48h).</p>
               </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Descanso Desvinculado</h4>
-                <p>Mínimo <strong>38 horas</strong> entre el fin de una jornada y el inicio del siguiente ciclo de trabajo.</p>
+              <div className="p-4 bg-yellow-50 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-2">Descanso Fuera de Residencia</h4>
+                <p><strong>Normal:</strong> ≥9h | <strong>Merma:</strong> &lt;9h y ≥6h | <strong>Empalme:</strong> &lt;6h</p>
               </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Límite Mensual</h4>
-                <p>Máximo <strong>25 horas/mes</strong> de mayor dedicación + merma. Si supera <strong>30 horas</strong>, el exceso se compensa con descanso en las 14 semanas siguientes (máx. 10h acumuladas).</p>
+              <div className="p-4 bg-yellow-50 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-2">Descanso en Residencia</h4>
+                <p><strong>Normal:</strong> ≥14h | <strong>Merma:</strong> &lt;14h y ≥10h | <strong>Empalme:</strong> &lt;10h</p>
               </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-800 mb-2">Merma de Descanso Diario</h4>
-                <p>Si no se disfruta la compensación por merma, la jornada finalizará al alcanzar <strong>10 horas</strong> en residencia o <strong>6 horas</strong> fuera de ella.</p>
-              </div>
-              <div className="p-4 bg-yellow-50 rounded-lg col-span-full">
-                <h4 className="font-semibold text-yellow-800 mb-2">Clasificación de Descansos Reducidos</h4>
-                <ul className="list-disc pl-4 space-y-1">
-                  <li><strong>&lt; 48h pero &gt; 38h:</strong> No se disfrutó el primer día de descanso</li>
-                  <li><strong>&lt; 38h:</strong> Primer descanso no disfrutado, segundo mermado</li>
-                  <li><strong>&lt; 24h:</strong> No se disfrutó ninguno de los dos descansos</li>
-                </ul>
+              <div className="p-4 bg-purple-50 rounded-lg col-span-full">
+                <h4 className="font-semibold text-purple-800 mb-2">Empalme de Jornada</h4>
+                <p>Cuando el descanso es inferior al mínimo de empalme, las dos jornadas se suman como una sola.</p>
+                <p className="mt-1"><strong>Cálculo:</strong> Total horas ambas jornadas - 8h 13min = Mayor dedicación</p>
               </div>
             </div>
-          </div>
+          </SeccionColapsable>
         </div>
       )}
 
@@ -1198,8 +1849,7 @@ const ScheduleAnalyzer = () => {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Análisis de tiempos de espera entre trenes</h2>
+          <SeccionColapsable titulo="Análisis de tiempos de espera entre trenes">
             <p className="text-gray-700 mb-2">
               <strong>Tiempo total de espera en el mes:</strong> {formatMinutes(Math.round(monthlyStats.totalRestMinutes))} ({monthlyStats.totalRestHours}h)
             </p>
@@ -1233,10 +1883,9 @@ const ScheduleAnalyzer = () => {
                 <li>Evaluar si algunos SS se pueden eliminar o sustituir</li>
               </ul>
             </div>
-          </div>
+          </SeccionColapsable>
 
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Detalle completo del mes</h2>
+         <SeccionColapsable titulo="Detalle completo del mes">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
@@ -1284,10 +1933,9 @@ const ScheduleAnalyzer = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SeccionColapsable>
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Análisis y recomendaciones</h2>
+          <SeccionColapsable titulo="Análisis y recomendaciones">
             <div className="space-y-4 text-gray-700">
               <div>
                 <h3 className="font-semibold text-lg mb-2">📊 Desglose completo de horas:</h3>
@@ -1340,8 +1988,11 @@ const ScheduleAnalyzer = () => {
                 </ul>
               </div>
             </div>
-          </div>
+          </SeccionColapsable>
         </>
+      )}
+      {showCSVHelp && (
+        <CSVHelpModal onClose={() => setShowCSVHelp(false)} />
       )}
     </div>
   );
