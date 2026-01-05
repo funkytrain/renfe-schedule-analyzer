@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mejoras de responsividad para tablas en móvil */
+@media (max-width: 640px) {
+  .table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .table-responsive table {
+    min-width: 800px;
+  }
+}
+
+/* Scroll horizontal suave */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mejora visual para cards en móvil */
+@media (max-width: 640px) {
+  .card-mobile {
+    padding: 1rem;
+  }
+}
