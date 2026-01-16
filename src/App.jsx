@@ -2000,6 +2000,17 @@ const horasExtraCiclo = useMemo(() => {
       {showUserGuide && (
         <UserGuideModal onClose={() => setShowUserGuide(false)} />
       )}
+            {/* Disclaimer legal */}
+      <div className="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-500 text-center leading-relaxed">
+        <p>
+          Esta aplicación se ha creado sin ánimo de lucro para facilitar el cálculo
+          de turnos y mermas del personal de intervención. A pesar de haber sido
+          probada, sus resultados son solo orientativos y siempre deben ser
+          revisados antes de tomar decisiones laborales o administrativas. El
+          desarrollador y el sindicato no se responsabilizan de posibles errores o
+          discrepancias.
+        </p>
+      </div>
     </div>
   );
 };
