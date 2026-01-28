@@ -1025,7 +1025,7 @@ const horasExtraCiclo = useMemo(() => {
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 bg-gray-50 min-h-screen">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Análisis de Gráfico de Interventores Renfe - Pamplona</h1>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Análisis de Gráfico de Interventores Renfe</h1>
         <button
           onClick={() => setShowUserGuide(true)}
           className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
