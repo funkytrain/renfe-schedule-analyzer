@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import * as XLSX from 'xlsx';
 import SeccionColapsable from "./SeccionColapsable";
 import CSVHelpModal from "./CSVHelpModal";
 import UserGuideModal from "./UserGuideModal";
@@ -101,14 +102,40 @@ const ScheduleAnalyzer = () => {
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
-// Manejar carga de archivo CSV
+// Manejar carga de archivo CSV o Excel
   const handleCSVUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const content = e.target.result;
+      const data = e.target.result;
+      let content;
+
+      // Detectar tipo de archivo y procesar
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        try {
+          // Leer archivo Excel
+          const workbook = XLSX.read(data, { type: 'binary' });
+
+          // Obtener primera hoja
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+
+          // Convertir a CSV
+          content = XLSX.utils.sheet_to_csv(worksheet);
+        } catch (error) {
+          alert('Error al leer el archivo Excel: ' + error.message);
+          return;
+        }
+      } else if (file.name.endsWith('.csv')) {
+        // Es CSV, usar directamente
+        content = data;
+      } else {
+        alert('Formato no soportado. Por favor, sube un archivo .xlsx, .xls o .csv');
+        return;
+      }
+
       // Validar que tiene el formato esperado
       const firstLine = content.split('\n')[0];
       if (firstLine.includes('CLAVE') && firstLine.includes('LMXJVSD')) {
@@ -116,10 +143,16 @@ const ScheduleAnalyzer = () => {
         setCsvFileName(file.name);
         setIncidenciaOverrides({}); // Resetear sustituciones al cargar nuevo CSV
       } else {
-        alert('El archivo CSV no tiene el formato esperado. Asegúrate de que contiene las columnas: CLAVE, LMXJVSD, N_CIRC, N_VENTA, SERV, IJ, PRES, SAL, DESDE, HASTA, LLEG, DEJ, FJ');
+        alert('El archivo no tiene el formato esperado. Asegúrate de que contiene las columnas: CLAVE, LMXJVSD, N_CIRC, N_VENTA, SERV, IJ, PRES, SAL, DESDE, HASTA, LLEG, DEJ, FJ');
       }
     };
-    reader.readAsText(file);
+
+    // Leer como binario para Excel, como texto para CSV
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      reader.readAsBinaryString(file);
+    } else {
+      reader.readAsText(file);
+    }
   };
 
     const handleResetCSV = () => {
@@ -1038,10 +1071,10 @@ const horasExtraCiclo = useMemo(() => {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex items-center gap-2">
                     <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors">
-                        📁 Cargar CSV
+                        📁 Cargar archivo (.xlsx o .csv)
                         <input
                             type="file"
-                            accept=".csv"
+                            accept=".xlsx,.xls,.csv"
                             onChange={handleCSVUpload}
                             className="hidden"
                         />
