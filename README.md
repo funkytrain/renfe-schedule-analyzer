@@ -12,7 +12,7 @@ Aplicación web para analizar horarios de interventores de Renfe y verificar el 
 4. [Pestaña: Análisis General](#pestaña-análisis-general)
 5. [Pestaña: Cumplimiento Normativo](#pestaña-cumplimiento-normativo)
 6. [Gestión de Incidencias y Retrasos](#gestión-de-incidencias-y-retrasos)
-7. [Importar tu Propio CSV](#importar-tu-propio-csv)
+7. [Importar tu Propio Gráfico](#importar-tu-propio-gráfico)
 8. [Normativa Aplicada](#normativa-aplicada)
 9. [Preguntas Frecuentes](#preguntas-frecuentes)
 
@@ -22,6 +22,7 @@ Aplicación web para analizar horarios de interventores de Renfe y verificar el 
 
 Esta herramienta permite a los interventores de Renfe:
 
+- **Cargar archivos Excel o CSV** directamente sin conversiones manuales
 - **Analizar su gráfico mensual** de turnos y servicios
 - **Verificar el cumplimiento** de la normativa laboral (jornadas máximas, descansos, etc.)
 - **Detectar infracciones** y advertencias automáticamente
@@ -147,13 +148,25 @@ Los retrasos afectan al cálculo de:
 
 ---
 
-## Importar tu Propio CSV
+## Importar tu Propio Gráfico
 
 ### Pasos para Importar
 
-1. Pulsa el botón **"📂 Cargar CSV"**
-2. Selecciona tu archivo CSV con el gráfico real
+1. Pulsa el botón **"📁 Cargar archivo (.xlsx o .csv)"**
+2. Selecciona tu archivo (Excel o CSV) con el gráfico real
 3. La aplicación validará el formato automáticamente
+
+### Formatos Soportados
+
+La aplicación acepta dos formatos de archivo:
+
+- **📊 Archivos Excel (.xlsx, .xls)**: Se convierten automáticamente a CSV en tu navegador
+- **📄 Archivos CSV (.csv)**: Se cargan directamente
+
+**Ventajas del formato Excel:**
+- No necesitas convertir manualmente el archivo que recibes
+- La conversión ocurre instantáneamente en tu navegador
+- Tus datos nunca salen de tu ordenador (máxima privacidad)
 
 ### Formato del CSV
 
@@ -244,6 +257,14 @@ Se genera cuando el turno natural supera **8h 13min (493 minutos)**:
 ---
 
 ## Preguntas Frecuentes
+
+### ¿Puedo subir directamente el archivo Excel que me envían?
+
+Sí. La aplicación acepta archivos Excel (.xlsx y .xls) y los convierte automáticamente a CSV en tu navegador. No necesitas hacer ninguna conversión manual.
+
+### ¿Es seguro subir archivos Excel a la aplicación?
+
+Completamente seguro. La conversión de Excel a CSV ocurre **íntegramente en tu navegador**, sin enviar ningún dato a servidores externos. Tus horarios nunca salen de tu ordenador.
 
 ### ¿Qué es la "regla de esperas"?
 
