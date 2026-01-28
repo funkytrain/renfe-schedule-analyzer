@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import SeccionColapsable from "./SeccionColapsable";
 import CSVHelpModal from "./CSVHelpModal";
 import UserGuideModal from "./UserGuideModal";
@@ -183,6 +185,417 @@ const ScheduleAnalyzer = () => {
         setCsvFileName(null);
         setIncidenciaOverrides({});
     };
+
+  // =============================================
+  // EXPORTACIÓN A EXCEL
+  // =============================================
+  const exportToExcel = () => {
+    const monthName = monthNames[selectedMonth];
+    const fileName = `Analisis_Renfe_${monthName}_${selectedYear}.xlsx`;
+
+    // Crear un nuevo libro de trabajo
+    const workbook = XLSX.utils.book_new();
+
+    // ========== HOJA 1: RESUMEN ==========
+    const resumenData = [
+      ['ANÁLISIS DE GRÁFICO DE INTERVENTORES RENFE'],
+      [''],
+      ['CONFIGURACIÓN'],
+      ['Mes:', `${monthName} ${selectedYear}`],
+      ['Días en el mes:', getDaysInMonth(selectedMonth, selectedYear)],
+      ['Clave inicial:', startingKey],
+      ['Día inicial:', `${dayMap[startingDay]} (${startingDay})`],
+      ['Archivo CSV:', csvFileName || 'Datos por defecto'],
+      [''],
+      ['ESTADÍSTICAS MENSUALES'],
+      ['Total horas trabajadas:', monthlyStats.totalWorkedHours + ' h'],
+      ['Horas efectivas de trabajo:', monthlyStats.totalEffectiveHours + ' h'],
+      ['Horas en SS (desplazamiento):', monthlyStats.totalSSHours + ' h'],
+      ['Horas de descanso entre trenes:', monthlyStats.totalRestHours + ' h'],
+      ['Días trabajados:', monthlyStats.workedDays],
+      ['Días de descanso:', monthlyStats.restDays],
+      ['Noches en hotel:', monthlyStats.hotelNights],
+      ['Promedio horas/día trabajado:', monthlyStats.avgHoursPerWorkDay + ' h'],
+      ['Promedio descanso entre trenes:', (monthlyStats.avgRestBetweenTrains / 60).toFixed(2) + ' h'],
+      [''],
+      ['CUMPLIMIENTO NORMATIVO'],
+      ['Total infracciones:', analyzeCompliance.violations.length],
+      ['Infracciones críticas:', analyzeCompliance.violations.filter(v => v.severity === 'critica').length],
+      ['Infracciones altas:', analyzeCompliance.violations.filter(v => v.severity === 'alta').length],
+      ['Infracciones medias:', analyzeCompliance.violations.filter(v => v.severity === 'media').length],
+      ['Total avisos:', analyzeCompliance.warnings.length],
+      [''],
+      ['HORAS EXTRA Y MERMA'],
+      ['Mayor dedicación total:', (analyzeCompliance.summary.totalMayorDedicacion / 60).toFixed(2) + ' h'],
+      ['Merma de descanso total:', (analyzeCompliance.summary.totalMermaDescanso / 60).toFixed(2) + ' h'],
+      ['Horas extra ciclo 5 días:', (horasExtraCiclo.totalHorasExtra / 60).toFixed(2) + ' h'],
+      ['Exceso mensual total:', (analyzeCompliance.summary.totalExcesoMensual / 60).toFixed(2) + ' h'],
+      ['Límite mensual (25h):', analyzeCompliance.summary.limiteMensualExceeded ? '❌ EXCEDIDO' : '✅ OK'],
+    ];
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+    XLSX.utils.book_append_sheet(workbook, wsResumen, 'Resumen');
+
+    // ========== HOJA 2: DETALLE DIARIO ==========
+    const detalleDiarioData = [
+      ['Día', 'Clave', 'Día Semana', 'Tipo', 'Horas Totales', 'Efectivas', 'SS (min)', 'Esperas', 'Tren (min)', 'Turno Total', 'Mayor Dedic.', 'Hotel', 'Retraso']
+    ];
+    monthAnalysis.forEach(day => {
+      detalleDiarioData.push([
+        day.day,
+        day.key,
+        day.dayName,
+        day.type,
+        (day.workedMinutes / 60).toFixed(2),
+        (day.effectiveMinutes / 60).toFixed(2),
+        day.ssMinutes,
+        (day.adjustedEffectiveMinutes - day.effectiveMinutes),
+        day.trainServiceMinutes,
+        day.totalShiftMinutes,
+        day.mayorDedicacionMinutes,
+        day.endsInHotel ? 'SÍ' : 'NO',
+        day.delayMinutes || 0
+      ]);
+    });
+    const wsDetalle = XLSX.utils.aoa_to_sheet(detalleDiarioData);
+    XLSX.utils.book_append_sheet(workbook, wsDetalle, 'Detalle Diario');
+
+    // ========== HOJA 3: INFRACCIONES ==========
+    const infraccionesData = [
+      ['Tipo', 'Severidad', 'Día', 'Clave', 'Valor', 'Límite', 'Exceso', 'Mensaje']
+    ];
+    analyzeCompliance.violations.forEach(v => {
+      infraccionesData.push([
+        v.type,
+        v.severity.toUpperCase(),
+        v.day || `${v.fromDay}-${v.toDay}`,
+        v.key || '-',
+        v.value ? (v.value / 60).toFixed(2) + ' h' : '-',
+        v.limit ? (v.limit / 60).toFixed(2) + ' h' : '-',
+        v.excess ? (v.excess / 60).toFixed(2) + ' h' : (v.deficit ? (v.deficit / 60).toFixed(2) + ' h' : '-'),
+        v.message
+      ]);
+    });
+    const wsInfracciones = XLSX.utils.aoa_to_sheet(infraccionesData);
+    XLSX.utils.book_append_sheet(workbook, wsInfracciones, 'Infracciones');
+
+    // ========== HOJA 4: AVISOS ==========
+    const avisosData = [
+      ['Tipo', 'Día', 'Clave', 'Mensaje']
+    ];
+    analyzeCompliance.warnings.forEach(w => {
+      avisosData.push([
+        w.type,
+        w.day || '-',
+        w.key || '-',
+        w.message
+      ]);
+    });
+    const wsAvisos = XLSX.utils.aoa_to_sheet(avisosData);
+    XLSX.utils.book_append_sheet(workbook, wsAvisos, 'Avisos');
+
+    // ========== HOJA 5: PERNOCTAS ==========
+    const pernoctasData = [
+      ['Día', 'Día Siguiente', 'Ubicación', 'Llegada', 'Salida', 'Descanso (h)', 'Estado', 'Clave Actual', 'Clave Siguiente', 'Retraso']
+    ];
+    pernoctasAnalysis.forEach(p => {
+      const formatTime = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      };
+      pernoctasData.push([
+        p.dia,
+        p.diaSiguiente,
+        p.ubicacion,
+        formatTime(p.llegada),
+        formatTime(p.salida),
+        (p.descansoMinutos / 60).toFixed(2),
+        p.estado,
+        p.claveActual,
+        p.claveSiguiente,
+        p.retrasoAplicado || 0
+      ]);
+    });
+    const wsPernoctas = XLSX.utils.aoa_to_sheet(pernoctasData);
+    XLSX.utils.book_append_sheet(workbook, wsPernoctas, 'Pernoctas');
+
+    // ========== HOJA 6: CICLOS 5 DÍAS ==========
+    const ciclosData = [
+      ['Ciclo', 'Días', 'Total Minutos', 'Horas Extra', 'Claves', 'Incompleto']
+    ];
+    horasExtraCiclo.ciclos.forEach((c, idx) => {
+      ciclosData.push([
+        idx + 1,
+        c.dias.join(', '),
+        c.totalMinutos,
+        (c.horasExtraMinutos / 60).toFixed(2),
+        c.claves.join(', '),
+        c.incompleto ? 'SÍ' : 'NO'
+      ]);
+    });
+    ciclosData.push([]);
+    ciclosData.push(['TOTAL HORAS EXTRA:', '', '', (horasExtraCiclo.totalHorasExtra / 60).toFixed(2) + ' h']);
+    const wsCiclos = XLSX.utils.aoa_to_sheet(ciclosData);
+    XLSX.utils.book_append_sheet(workbook, wsCiclos, 'Ciclos 5 Días');
+
+    // ========== HOJA 7: DESGLOSE DE TURNOS ==========
+    const turnosData = [
+      ['Día', 'Clave', 'Núm. Tren', 'Servicio', 'Presentación', 'Salida', 'Origen', 'Destino', 'Llegada', 'Dejación', 'Hotel', 'Duración (min)']
+    ];
+    monthAnalysis.forEach(day => {
+      if (day.type === 'TRABAJO' && day.trains && day.trains.length > 0) {
+        day.trains.forEach((train, idx) => {
+          const formatTime = (mins) => {
+            if (!mins && mins !== 0) return '-';
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+          };
+          turnosData.push([
+            idx === 0 ? day.day : '',
+            idx === 0 ? day.key : '',
+            train.N_CIRC,
+            train.SERV,
+            formatTime(train.presentacion),
+            formatTime(train.salida),
+            train.DESDE,
+            train.HASTA,
+            formatTime(train.llegada),
+            formatTime(train.dejacion),
+            train.FJ === 'HOTEL' ? 'SÍ' : 'NO',
+            train.duracion || '-'
+          ]);
+        });
+      }
+    });
+    const wsTurnos = XLSX.utils.aoa_to_sheet(turnosData);
+    XLSX.utils.book_append_sheet(workbook, wsTurnos, 'Desglose Turnos');
+
+    // Descargar el archivo
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  // =============================================
+  // EXPORTACIÓN A PDF
+  // =============================================
+  const exportToPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const monthName = monthNames[selectedMonth];
+    const fileName = `Analisis_Renfe_${monthName}_${selectedYear}.pdf`;
+
+    let yPos = 20;
+    const pageHeight = doc.internal.pageSize.height;
+    const marginBottom = 20;
+
+    // Función auxiliar para añadir nueva página si es necesario
+    const checkAddPage = (requiredSpace = 20) => {
+      if (yPos + requiredSpace > pageHeight - marginBottom) {
+        doc.addPage();
+        yPos = 20;
+        return true;
+      }
+      return false;
+    };
+
+    // ========== TÍTULO PRINCIPAL ==========
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('ANÁLISIS DE GRÁFICO DE INTERVENTORES RENFE', 105, yPos, { align: 'center' });
+    yPos += 10;
+
+    // ========== CONFIGURACIÓN ==========
+    doc.setFontSize(14);
+    doc.text('Configuración', 20, yPos);
+    yPos += 8;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Mes: ${monthName} ${selectedYear} (${getDaysInMonth(selectedMonth, selectedYear)} días)`, 20, yPos);
+    yPos += 6;
+    doc.text(`Clave inicial: ${startingKey} | Día inicial: ${dayMap[startingDay]} (${startingDay})`, 20, yPos);
+    yPos += 6;
+    doc.text(`Archivo CSV: ${csvFileName || 'Datos por defecto'}`, 20, yPos);
+    yPos += 10;
+
+    // ========== RESUMEN ESTADÍSTICO ==========
+    checkAddPage(60);
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Resumen Estadístico', 20, yPos);
+    yPos += 8;
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Métrica', 'Valor']],
+      body: [
+        ['Total horas trabajadas', monthlyStats.totalWorkedHours + ' h'],
+        ['Horas efectivas de trabajo', monthlyStats.totalEffectiveHours + ' h'],
+        ['Horas en SS (desplazamiento)', monthlyStats.totalSSHours + ' h'],
+        ['Días trabajados', monthlyStats.workedDays],
+        ['Días de descanso', monthlyStats.restDays],
+        ['Noches en hotel', monthlyStats.hotelNights],
+        ['Promedio horas/día trabajado', monthlyStats.avgHoursPerWorkDay + ' h'],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] },
+      margin: { left: 20, right: 20 },
+    });
+    yPos = doc.lastAutoTable.finalY + 10;
+
+    // ========== CUMPLIMIENTO NORMATIVO ==========
+    checkAddPage(60);
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Cumplimiento Normativo', 20, yPos);
+    yPos += 8;
+
+    const criticalCount = analyzeCompliance.violations.filter(v => v.severity === 'critica').length;
+    const highCount = analyzeCompliance.violations.filter(v => v.severity === 'alta').length;
+    const mediumCount = analyzeCompliance.violations.filter(v => v.severity === 'media').length;
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Indicador', 'Valor']],
+      body: [
+        ['Total infracciones', analyzeCompliance.violations.length.toString()],
+        ['Infracciones críticas', criticalCount.toString()],
+        ['Infracciones altas', highCount.toString()],
+        ['Infracciones medias', mediumCount.toString()],
+        ['Total avisos', analyzeCompliance.warnings.length.toString()],
+        ['Mayor dedicación total', (analyzeCompliance.summary.totalMayorDedicacion / 60).toFixed(2) + ' h'],
+        ['Merma de descanso total', (analyzeCompliance.summary.totalMermaDescanso / 60).toFixed(2) + ' h'],
+        ['Exceso mensual', (analyzeCompliance.summary.totalExcesoMensual / 60).toFixed(2) + ' h'],
+        ['Límite 25h', analyzeCompliance.summary.limiteMensualExceeded ? 'EXCEDIDO' : 'OK'],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] },
+      margin: { left: 20, right: 20 },
+    });
+    yPos = doc.lastAutoTable.finalY + 10;
+
+    // ========== DETALLE DE INFRACCIONES ==========
+    if (analyzeCompliance.violations.length > 0) {
+      checkAddPage(40);
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Detalle de Infracciones', 20, yPos);
+      yPos += 8;
+
+      const infraccionesBody = analyzeCompliance.violations.slice(0, 50).map(v => [
+        v.severity.toUpperCase(),
+        v.day || `${v.fromDay}-${v.toDay}`,
+        v.key || '-',
+        v.message.length > 60 ? v.message.substring(0, 57) + '...' : v.message
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Severidad', 'Día', 'Clave', 'Mensaje']],
+        body: infraccionesBody,
+        theme: 'striped',
+        headStyles: { fillColor: [239, 68, 68] },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 8 },
+      });
+      yPos = doc.lastAutoTable.finalY + 10;
+
+      if (analyzeCompliance.violations.length > 50) {
+        doc.setFontSize(9);
+        doc.setFont(undefined, 'italic');
+        doc.text(`(Mostrando 50 de ${analyzeCompliance.violations.length} infracciones. Ver Excel para el listado completo)`, 20, yPos);
+        yPos += 10;
+      }
+    }
+
+    // ========== DETALLE DIARIO (RESUMEN) ==========
+    checkAddPage(40);
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Detalle Diario', 20, yPos);
+    yPos += 8;
+
+    const detalleDiarioBody = monthAnalysis.slice(0, 31).map(day => [
+      day.day,
+      day.key,
+      day.dayName.substring(0, 3),
+      day.type === 'TRABAJO' ? 'T' : 'D',
+      (day.workedMinutes / 60).toFixed(1),
+      (day.effectiveMinutes / 60).toFixed(1),
+      day.endsInHotel ? 'SÍ' : 'NO'
+    ]);
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Día', 'Clave', 'D.S.', 'Tipo', 'H.Tot', 'H.Efec', 'Hotel']],
+      body: detalleDiarioBody,
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] },
+      margin: { left: 20, right: 20 },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 15 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+      }
+    });
+    yPos = doc.lastAutoTable.finalY + 10;
+
+    // ========== PERNOCTAS ==========
+    if (pernoctasAnalysis.length > 0) {
+      checkAddPage(40);
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Análisis de Pernoctas', 20, yPos);
+      yPos += 8;
+
+      const formatTime = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      };
+
+      const pernoctasBody = pernoctasAnalysis.slice(0, 30).map(p => [
+        `${p.dia}-${p.diaSiguiente}`,
+        p.ubicacion.substring(0, 12),
+        formatTime(p.llegada),
+        formatTime(p.salida),
+        (p.descansoMinutos / 60).toFixed(1),
+        p.estado
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Días', 'Ubicación', 'Llegada', 'Salida', 'Desc.(h)', 'Estado']],
+        body: pernoctasBody,
+        theme: 'striped',
+        headStyles: { fillColor: [139, 92, 246] },
+        margin: { left: 20, right: 20 },
+        styles: { fontSize: 8 },
+      });
+      yPos = doc.lastAutoTable.finalY + 10;
+    }
+
+    // ========== PIE DE PÁGINA ==========
+    const totalPages = doc.internal.pages.length - 1;
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'normal');
+      doc.text(
+        `Generado el ${new Date().toLocaleDateString('es-ES')} - Página ${i} de ${totalPages}`,
+        105,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Descargar el PDF
+    doc.save(fileName);
+  };
 
   // Obtener claves disponibles para un día de la semana específico (excluyendo DESCANSO e INCIDENCIAS)
   const getAvailableKeysForDay = (dayCode) => {
@@ -1087,12 +1500,28 @@ const horasExtraCiclo = useMemo(() => {
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 bg-gray-50 min-h-screen">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Análisis de Gráfico de Interventores Renfe</h1>
-        <button
-          onClick={() => setShowUserGuide(true)}
-          className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
-        >
-          <span>📖</span> Guía de Usuario
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+            title="Exportar análisis completo a Excel"
+          >
+            <span>📊</span> Exportar Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+            title="Exportar informe a PDF"
+          >
+            <span>📄</span> Exportar PDF
+          </button>
+          <button
+            onClick={() => setShowUserGuide(true)}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+          >
+            <span>📖</span> Guía de Usuario
+          </button>
+        </div>
       </div>
         {/* Carga de CSV */}
         <div className="bg-white p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">

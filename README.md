@@ -12,9 +12,10 @@ Aplicación web para analizar horarios de interventores de Renfe y verificar el 
 4. [Pestaña: Análisis General](#pestaña-análisis-general)
 5. [Pestaña: Cumplimiento Normativo](#pestaña-cumplimiento-normativo)
 6. [Gestión de Incidencias y Retrasos](#gestión-de-incidencias-y-retrasos)
-7. [Importar tu Propio Gráfico](#importar-tu-propio-gráfico)
-8. [Normativa Aplicada](#normativa-aplicada)
-9. [Preguntas Frecuentes](#preguntas-frecuentes)
+7. [Exportar Resultados](#exportar-resultados)
+8. [Importar tu Propio Gráfico](#importar-tu-propio-gráfico)
+9. [Normativa Aplicada](#normativa-aplicada)
+10. [Preguntas Frecuentes](#preguntas-frecuentes)
 
 ---
 
@@ -29,6 +30,7 @@ Esta herramienta permite a los interventores de Renfe:
 - **Calcular mayor dedicación y mermas** de descanso
 - **Gestionar incidencias** sustituyendo claves cuando el supervisor asigna otro turno
 - **Registrar retrasos** para ajustar los cálculos de tiempo extra
+- **Exportar resultados completos** a Excel (7 hojas con todos los datos) o PDF (informe profesional)
 
 ---
 
@@ -48,7 +50,7 @@ En la parte superior encontrarás los controles de configuración:
 
 | Campo | Descripción |
 |-------|-------------|
-| **Clave inicial** | Tu número de turno de inicio (101-115) |
+| **Clave inicial** | Tu número de turno de inicio (según el rango de claves de tu gráfico) |
 | **Día de la semana** | El día en que comienza el mes (L, M, X, J, V, S, D) |
 | **Mes** | El mes a analizar |
 | **Año** | El año a analizar |
@@ -56,7 +58,7 @@ En la parte superior encontrarás los controles de configuración:
 ### Rotación de Claves
 
 El sistema rota automáticamente las claves día a día:
-- Día 1: Clave 103 → Día 2: Clave 104 → ... → Clave 115 → Clave 101
+- Ejemplo: Día 1: Clave 103 → Día 2: Clave 104 → ... → última clave → vuelve a la primera clave
 
 ---
 
@@ -148,6 +150,60 @@ Los retrasos afectan al cálculo de:
 
 ---
 
+## Exportar Resultados
+
+La aplicación ofrece dos formatos de exportación profesional para guardar y compartir tus análisis.
+
+### 📊 Exportación a Excel
+
+Haz clic en el botón **"📊 Exportar Excel"** en la parte superior para generar un archivo completo con 7 hojas:
+
+| Hoja | Contenido |
+|------|-----------|
+| **Resumen** | Configuración del análisis, estadísticas mensuales completas, indicadores de cumplimiento |
+| **Detalle Diario** | Tabla día a día con: clave, tipo, horas totales, efectivas, SS, esperas, tren, turno total, mayor dedicación, hotel, retraso |
+| **Infracciones** | Listado completo de violaciones: tipo, severidad, día, clave, valor vs límite, exceso, mensaje explicativo |
+| **Avisos** | Advertencias no críticas: tipo, día, clave, mensaje |
+| **Pernoctas** | Análisis de noches en hotel: días, ubicación, horarios, descanso, estado (OK/MERMA/EMPALME) |
+| **Ciclos 5 Días** | Desglose de ciclos de trabajo: días involucrados, minutos totales, horas extra, claves utilizadas |
+| **Desglose Turnos** | Detalle servicio por servicio: núm. tren, tipo, horarios, origen, destino, hotel, duración |
+
+**Ventajas del Excel:**
+- Datos manipulables: filtra, ordena, crea tus propios gráficos
+- Formato universal: compatible con Excel, LibreOffice, Google Sheets
+- Análisis personalizado: puedes calcular métricas adicionales
+- Comparación entre meses: abre varios archivos para comparar
+
+### 📄 Exportación a PDF
+
+Haz clic en el botón **"📄 Exportar PDF"** para generar un informe profesional con:
+
+- **Portada y configuración**: Mes, año, clave inicial, archivo CSV utilizado
+- **Resumen estadístico**: Horas trabajadas, efectivas, SS, días trabajados/descanso, hotel
+- **Cumplimiento normativo**: Contadores de infracciones por severidad, mayor dedicación, merma, exceso mensual
+- **Detalle de infracciones**: Lista de las primeras 50 infracciones con severidad y descripción
+- **Detalle diario resumido**: Tabla compacta con lo esencial de cada día
+- **Análisis de pernoctas**: Primeras 30 pernoctas con estado y descanso
+- **Pie de página**: Fecha de generación y numeración automática
+
+**Ventajas del PDF:**
+- Formato oficial: ideal para reclamaciones o documentación formal
+- No editable: mantiene la integridad del informe
+- Fácil compartir: adjunta por email o mensajería
+- Imprimible: listo para llevar físicamente
+
+### Nombres de Archivo Automáticos
+
+Los archivos exportados se nombran automáticamente según el mes y año del análisis:
+- Excel: `Analisis_Renfe_Enero_2025.xlsx`
+- PDF: `Analisis_Renfe_Enero_2025.pdf`
+
+### Privacidad
+
+Ambas exportaciones se generan **íntegramente en tu navegador**. Ningún dato sale de tu ordenador hacia servidores externos.
+
+---
+
 ## Importar tu Propio Gráfico
 
 ### Pasos para Importar
@@ -174,7 +230,7 @@ El archivo debe contener las siguientes columnas:
 
 | Columna | Descripción | Ejemplo |
 |---------|-------------|---------|
-| CLAVE | Número de turno (101-115) | 103 |
+| CLAVE | Número de turno (según tu gráfico) | 103 |
 | LMXJVSD | Días de circulación | LMXJV, SD, DIARIO |
 | N_CIRC | Número de tren o DESCANSO/INCIDENCIAS | 18048 |
 | PRES | Hora de presentación | 14:00 |
@@ -284,7 +340,30 @@ Según la normativa, el interventor **debe abandonar el servicio** al alcanzar l
 
 ### ¿Puedo exportar los resultados?
 
-Actualmente la aplicación no tiene función de exportación. Puedes hacer capturas de pantalla o copiar los datos manualmente.
+Sí. La aplicación incluye dos opciones de exportación en la parte superior:
+
+**📊 Exportar a Excel**: Genera un archivo `.xlsx` con 7 hojas:
+1. **Resumen**: Configuración, estadísticas mensuales y cumplimiento normativo
+2. **Detalle Diario**: Tabla completa día a día con todas las métricas
+3. **Infracciones**: Listado detallado de todas las violaciones normativas
+4. **Avisos**: Advertencias no críticas
+5. **Pernoctas**: Análisis completo de noches en hotel
+6. **Ciclos 5 Días**: Horas extra por ciclo de 5 días trabajados
+7. **Desglose Turnos**: Detalle servicio por servicio
+
+El archivo Excel es ideal para análisis posteriores, filtrado de datos y creación de gráficos personalizados.
+
+**📄 Exportar a PDF**: Genera un informe profesional en formato PDF con:
+- Configuración del análisis
+- Resumen estadístico con tablas
+- Cumplimiento normativo e infracciones
+- Detalle diario resumido
+- Análisis de pernoctas
+- Numeración de páginas y fecha de generación
+
+El PDF es ideal para adjuntar a reclamaciones o enviar como informe oficial.
+
+Ambas exportaciones reflejan exactamente el estado actual del análisis, incluyendo sustituciones de incidencias y retrasos aplicados.
 
 ### ¿Los datos se guardan?
 
