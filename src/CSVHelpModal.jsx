@@ -42,6 +42,41 @@ export default function CSVHelpModal({ onClose }) {
 
           <hr />
 
+          <h3 className="font-semibold text-base">📄 Formato original: Excel (.xlsx)</h3>
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+            <p className="font-semibold text-yellow-800">⚠️ Paso previo obligatorio</p>
+            <p className="mt-2">
+              Los gráficos de claves se proporcionan originalmente en formato <strong>Excel (.xlsx)</strong>.
+              Antes de usar esta aplicación, <strong>debes convertir el archivo a formato CSV</strong>.
+            </p>
+          </div>
+
+          <p className="font-semibold">Cómo convertir de .xlsx a .csv:</p>
+          <ol className="list-decimal list-inside space-y-1 ml-2">
+            <li>Abre el archivo Excel (.xlsx) con Microsoft Excel o LibreOffice Calc</li>
+            <li>Ve a <strong>Archivo → Guardar como...</strong></li>
+            <li>En "Tipo de archivo", selecciona <strong>CSV (delimitado por comas)</strong></li>
+            <li>Guarda el archivo con un nombre descriptivo (ej: "claves_enero_2025.csv")</li>
+            <li>Ya puedes importar ese archivo .csv en esta aplicación</li>
+          </ol>
+
+          <h3 className="font-semibold text-base mt-4">🖼️ Ejemplo visual del formato</h3>
+          <p className="text-gray-600 italic">
+            Así es como se ve el archivo original en Excel antes de convertirlo a CSV:
+          </p>
+          <div className="border-2 border-gray-300 rounded-lg overflow-hidden shadow-md bg-white p-2">
+            <img
+              src="/csv-example.png"
+              alt="Ejemplo de formato Excel con claves de interventores"
+              className="w-full mx-auto rounded"
+            />
+          </div>
+          <p className="text-xs text-gray-500 italic text-center">
+            Imagen de referencia: estructura típica del archivo Excel de claves
+          </p>
+
+          <hr />
+
           <h3 className="font-semibold text-base">🧩 ¿Qué es el CSV?</h3>
           <p>
             El CSV es un archivo parecido a un Excel:
