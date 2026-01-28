@@ -81,6 +81,29 @@ const ScheduleAnalyzer = () => {
 
   const data = useMemo(() => parseData(), [csvData]);
 
+  // Detectar claves disponibles del CSV (extrae todas las claves únicas y las ordena)
+  const availableKeys = useMemo(() => {
+    const keys = new Set();
+    data.forEach(row => {
+      const key = parseInt(row.CLAVE);
+      if (!isNaN(key)) {
+        keys.add(key);
+      }
+    });
+    return Array.from(keys).sort((a, b) => a - b);
+  }, [data]);
+
+  // Obtener la clave mínima y máxima disponibles
+  const minKey = useMemo(() => availableKeys.length > 0 ? availableKeys[0] : 101, [availableKeys]);
+  const maxKey = useMemo(() => availableKeys.length > 0 ? availableKeys[availableKeys.length - 1] : 115, [availableKeys]);
+
+  // Ajustar startingKey si no está en las claves disponibles
+  React.useEffect(() => {
+    if (availableKeys.length > 0 && !availableKeys.includes(parseInt(startingKey))) {
+      setStartingKey(availableKeys[0].toString());
+    }
+  }, [availableKeys, startingKey]);
+
   const dayMap = {
     'L': 'Lunes',
     'M': 'Martes',
@@ -163,20 +186,20 @@ const ScheduleAnalyzer = () => {
 
   // Obtener claves disponibles para un día de la semana específico (excluyendo DESCANSO e INCIDENCIAS)
   const getAvailableKeysForDay = (dayCode) => {
-    const availableKeys = [];
-    for (let key = 101; key <= 115; key++) {
+    const keysForDay = [];
+    availableKeys.forEach(key => {
       const keyStr = key.toString();
-      const keyData = data.filter(row => 
-        row.CLAVE === keyStr && 
+      const keyData = data.filter(row =>
+        row.CLAVE === keyStr &&
         matchesDayPattern(row.LMXJVSD, dayCode) &&
         row.N_CIRC !== 'DESCANSO' &&
         row.DESDE !== 'INCIDENCIAS'
       );
       if (keyData.length > 0) {
-        availableKeys.push(keyStr);
+        keysForDay.push(keyStr);
       }
-    }
-    return availableKeys;
+    });
+    return keysForDay;
   };
 
   const matchesDayPattern = (pattern, day) => {
@@ -497,18 +520,23 @@ const ScheduleAnalyzer = () => {
         departureTime: startTime, // Hora de salida de este día
       });
     }
-      
-      currentKey++;
-      if (currentKey > 115) currentKey = 101;
-      
+
+      // Rotar a la siguiente clave disponible
+      const currentKeyIndex = availableKeys.indexOf(currentKey);
+      if (currentKeyIndex !== -1 && currentKeyIndex < availableKeys.length - 1) {
+        currentKey = availableKeys[currentKeyIndex + 1];
+      } else {
+        currentKey = availableKeys[0]; // Volver a la primera clave
+      }
+
       currentDayIndex++;
       if (currentDayIndex >= 7) currentDayIndex = 0;
     }
-    
+
     return results;
   };
 
-  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides, delayOverrides]);
+  const monthAnalysis = useMemo(() => analyzeMonth(), [startingKey, startingDay, selectedMonth, selectedYear, incidenciaOverrides, delayOverrides, availableKeys]);
   // Calcular información de pernoctas (noches en hotel con tiempos de descanso)
   const pernoctasAnalysis = useMemo(() => {
   const pernoctas = [];
@@ -1005,15 +1033,15 @@ const horasExtraCiclo = useMemo(() => {
 
   const keyStats = useMemo(() => {
     const stats = {};
-    
-    for (let key = 101; key <= 115; key++) {
+
+    availableKeys.forEach(key => {
       const keyStr = key.toString();
       const keyData = monthAnalysis.filter(d => d.key === keyStr);
-      
+
       if (keyData.length > 0) {
         const totalMinutes = keyData.reduce((sum, d) => sum + d.workedMinutes, 0);
         const avgMinutes = totalMinutes / keyData.length;
-        
+
         stats[keyStr] = {
           appearances: keyData.length,
           totalMinutes,
@@ -1021,10 +1049,10 @@ const horasExtraCiclo = useMemo(() => {
           isRest: keyData[0].type === 'DESCANSO'
         };
       }
-    }
-    
+    });
+
     return stats;
-  }, [monthAnalysis]);
+  }, [monthAnalysis, availableKeys]);
 
   const chartData = Object.keys(keyStats).map(key => ({
     clave: key,
@@ -1161,12 +1189,12 @@ const horasExtraCiclo = useMemo(() => {
         <div className="flex gap-3 sm:gap-4 flex-wrap">
           <div>
             <label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-2">Clave inicial:</label>
-            <select 
-              value={startingKey} 
+            <select
+              value={startingKey}
               onChange={(e) => setStartingKey(e.target.value)}
               className="border rounded px-2 sm:px-3 py-1.5 sm:py-2 text-sm"
             >
-              {Array.from({length: 15}, (_, i) => i + 101).map(k => (
+              {availableKeys.map(k => (
                 <option key={k} value={k}>{k}</option>
               ))}
             </select>
