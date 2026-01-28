@@ -64,15 +64,257 @@ export default function CSVHelpModal({ onClose }) {
           <p className="text-gray-600 italic">
             Así es como se ve el archivo original en Excel antes de convertirlo a CSV:
           </p>
-          <div className="border-2 border-gray-300 rounded-lg overflow-hidden shadow-md bg-white p-2">
-            <img
-              src="/csv-example.png"
-              alt="Ejemplo de formato Excel con claves de interventores"
-              className="w-full mx-auto rounded"
-            />
+          <div className="border-2 border-gray-300 rounded-lg overflow-auto shadow-md bg-white p-3 max-h-96">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-blue-600 text-white">
+                  <th className="border border-gray-300 px-2 py-1">CLAVES</th>
+                  <th className="border border-gray-300 px-2 py-1">LMXJVSD</th>
+                  <th className="border border-gray-300 px-2 py-1">Nº CIRC.</th>
+                  <th className="border border-gray-300 px-2 py-1">nº VENTA</th>
+                  <th className="border border-gray-300 px-2 py-1">SERV.</th>
+                  <th className="border border-gray-300 px-2 py-1">I.J.</th>
+                  <th className="border border-gray-300 px-2 py-1">PRES.</th>
+                  <th className="border border-gray-300 px-2 py-1">SAL.</th>
+                  <th className="border border-gray-300 px-2 py-1">DESDE</th>
+                  <th className="border border-gray-300 px-2 py-1">HASTA</th>
+                  <th className="border border-gray-300 px-2 py-1">LLEG.</th>
+                  <th className="border border-gray-300 px-2 py-1">DEJ.</th>
+                  <th className="border border-gray-300 px-2 py-1">F.J.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Clave 101 */}
+                <tr>
+                  <td rowSpan="5" className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">101</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJV</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">TAXI</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">TAXI</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">SS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">11:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">12:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJV</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19254</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19254</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">14:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">14:23</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">15:35</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJV</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19847</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19847</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">16:20</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">16:40</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:08</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:23</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">SD</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">12:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-yellow-400 font-bold">INCIDENCIAS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">20:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJ</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">12:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-yellow-400 font-bold">INCIDENCIAS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">20:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                {/* Clave 102 */}
+                <tr>
+                  <td rowSpan="4" className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">102</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">V</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">AUX</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">16:15</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">16:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17:32</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">V</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19123</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17456</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">18:04</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:26</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">V</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19741</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19741</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">20:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:13</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:28</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">SD</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">80100</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">12:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-yellow-400 font-bold">INCIDENCIAS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">20:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                {/* Clave 103 */}
+                <tr>
+                  <td rowSpan="3" className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">103</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">748/745</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">748/745</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">SS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">13:08</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD D</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">14:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">34582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">15:01</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">15:16</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD D</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">18:53</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19263</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19263</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:34</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD C</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:01</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:16</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                {/* Claves 106-108 DESCANSO */}
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">106</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-green-400 font-bold">DESCANSO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">107</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-green-400 font-bold">DESCANSO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">108</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">DIARIO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-green-400 font-bold">DESCANSO</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                {/* Más claves truncadas para brevedad - la tabla continúa... */}
+                <tr>
+                  <td colSpan="13" className="border border-gray-300 px-2 py-2 text-center text-gray-500 italic">
+                    ... (continúa hasta clave 115)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <p className="text-xs text-gray-500 italic text-center">
-            Imagen de referencia: estructura típica del archivo Excel de claves
+          <p className="text-xs text-gray-500 italic text-center mt-2">
+            Tabla de ejemplo: estructura típica del archivo Excel de claves (datos ficticios)
           </p>
 
           <hr />
