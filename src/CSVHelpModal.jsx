@@ -258,6 +258,50 @@ export default function CSVHelpModal({ onClose }) {
                   <td className="border border-gray-300 px-2 py-1 text-center">22:16</td>
                   <td className="border border-gray-300 px-2 py-1 text-center"></td>
                 </tr>
+                {/* Clave 104 - Con HOTEL */}
+                <tr>
+                  <td rowSpan="3" className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">104</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJVS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">34582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19582</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">15:09</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">15:26</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD D</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">16:50</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17:05</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJVS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17258</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17258</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">18:45</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD D</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">21:24</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJVS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19365</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19365</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">21:52</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD E</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">23:00</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">23:15</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-cyan-100">H.Ritz</td>
+                </tr>
                 {/* Claves 106-108 DESCANSO */}
                 <tr>
                   <td className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">106</td>
@@ -303,6 +347,36 @@ export default function CSVHelpModal({ onClose }) {
                   <td className="border border-gray-300 px-2 py-1 text-center"></td>
                   <td className="border border-gray-300 px-2 py-1 text-center"></td>
                   <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                {/* Clave 109 - Con HOTEL */}
+                <tr>
+                  <td rowSpan="2" className="border border-gray-300 px-2 py-1 bg-gray-200 font-bold text-center">109</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJV</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">748</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">748</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">SS</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">17:25</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">ESTACIÓN A</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD E</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19:21</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 px-2 py-1 text-center">LMXJV</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19874</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">19874</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">T</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center"></td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">20:54</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">21:09</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD E</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">CIUDAD B</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:15</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">22:30</td>
+                  <td className="border border-gray-300 px-2 py-1 text-center bg-cyan-100">H.SleepWell (2º A)</td>
                 </tr>
                 {/* Más claves truncadas para brevedad - la tabla continúa... */}
                 <tr>
