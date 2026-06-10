@@ -1018,22 +1018,6 @@ const ScheduleAnalyzer = () => {
   return pernoctas;
 }, [monthAnalysis]);
 
-  // horasExtraCiclo se calcula dentro de analyzeCompliance (ciclosAnalysis).
-  // Mantenemos este memo solo para compatibilidad con exportación Excel/PDF.
-  const horasExtraCiclo = useMemo(() => {
-    const ciclos = analyzeCompliance.ciclosAnalysis || [];
-    return {
-      ciclos: ciclos.map(c => ({
-        dias: c.dias,
-        totalMinutos: c.jornadaCiclica,
-        horasExtraMinutos: c.horasExtraMin,
-        claves: c.claves,
-        incompleto: !c.completo,
-      })),
-      totalHorasExtra: ciclos.reduce((sum, c) => sum + c.horasExtraMin, 0),
-    };
-  }, [analyzeCompliance]);
-
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
   // Marco Regulador de Intervención MD
@@ -1518,6 +1502,21 @@ const ScheduleAnalyzer = () => {
       enlacesDeJornada,
     };
   }, [monthAnalysis]);
+
+  // horasExtraCiclo depende de analyzeCompliance — debe declararse DESPUÉS
+  const horasExtraCiclo = useMemo(() => {
+    const ciclos = analyzeCompliance.ciclosAnalysis || [];
+    return {
+      ciclos: ciclos.map(c => ({
+        dias: c.dias,
+        totalMinutos: c.jornadaCiclica,
+        horasExtraMinutos: c.horasExtraMin,
+        claves: c.claves,
+        incompleto: !c.completo,
+      })),
+      totalHorasExtra: ciclos.reduce((sum, c) => sum + c.horasExtraMin, 0),
+    };
+  }, [analyzeCompliance]);
 
   const monthlyStats = useMemo(() => {
     const totalWorkedMinutes = monthAnalysis.reduce((sum, day) => sum + day.workedMinutes, 0);
