@@ -1018,389 +1018,493 @@ const ScheduleAnalyzer = () => {
   return pernoctas;
 }, [monthAnalysis]);
 
-// Calcular horas extra por ciclo (exceso sobre 36h 05min cada 5 días trabajados)
-const horasExtraCiclo = useMemo(() => {
-  const ciclos = [];
-  let cicloActual = [];
-  let diasTrabajadosEnCiclo = 0;
-
-  for (const day of monthAnalysis) {
-    if (day.type === 'TRABAJO') {
-      cicloActual.push(day);
-      diasTrabajadosEnCiclo++;
-
-      // Cada 5 días trabajados es un ciclo
-      if (diasTrabajadosEnCiclo === 5) {
-        const totalMinutosCiclo = cicloActual.reduce((sum, d) => sum + d.totalShiftMinutes, 0);
-        const horasExtraMinutos = Math.max(0, totalMinutosCiclo - 2165); // 36h 05min = 2165 min
-
-        ciclos.push({
-          dias: cicloActual.map(d => d.day),
-          totalMinutos: totalMinutosCiclo,
-          horasExtraMinutos,
-          claves: cicloActual.map(d => d.key)
-        });
-
-        cicloActual = [];
-        diasTrabajadosEnCiclo = 0;
-      }
-    }
-  }
-
-  // Ciclo incompleto al final del mes
-  if (cicloActual.length > 0) {
-    const totalMinutosCiclo = cicloActual.reduce((sum, d) => sum + d.totalShiftMinutes, 0);
-    // Para ciclos incompletos, calcular proporcionalmente: (36h 05min / 5) * días trabajados
-    const limiteProrrateado = Math.round((2165 / 5) * cicloActual.length);
-    const horasExtraMinutos = Math.max(0, totalMinutosCiclo - limiteProrrateado);
-
-    ciclos.push({
-      dias: cicloActual.map(d => d.day),
-      totalMinutos: totalMinutosCiclo,
-      horasExtraMinutos,
-      claves: cicloActual.map(d => d.key),
-      incompleto: true
-    });
-  }
-
-  return {
-    ciclos,
-    totalHorasExtra: ciclos.reduce((sum, c) => sum + c.horasExtraMinutos, 0)
-  };
-}, [monthAnalysis]);
+  // horasExtraCiclo se calcula dentro de analyzeCompliance (ciclosAnalysis).
+  // Mantenemos este memo solo para compatibilidad con exportación Excel/PDF.
+  const horasExtraCiclo = useMemo(() => {
+    const ciclos = analyzeCompliance.ciclosAnalysis || [];
+    return {
+      ciclos: ciclos.map(c => ({
+        dias: c.dias,
+        totalMinutos: c.jornadaCiclica,
+        horasExtraMinutos: c.horasExtraMin,
+        claves: c.claves,
+        incompleto: !c.completo,
+      })),
+      totalHorasExtra: ciclos.reduce((sum, c) => sum + c.horasExtraMin, 0),
+    };
+  }, [analyzeCompliance]);
 
   // =============================================
   // ANÁLISIS DE CUMPLIMIENTO DE NORMATIVA
+  // Marco Regulador de Intervención MD
   // =============================================
-  
+
+  // Constantes normativas
+  const MAYOR_DEDICACION_UMBRAL = 493;   // 8h 13min — umbral jornada ordinaria para mayor dedicación
+  const JORNADA_EFECTIVA_MAXIMA = 433;   // 7h 13min — jornada efectiva máxima por turno/día
+  const DESCANSO_MIN_RESIDENCIA = 840;   // 14h — descanso diario mínimo completo en residencia
+  const DESCANSO_EMPALME_RESIDENCIA = 600; // 10h — mínimo para finalizar jornada en residencia
+  const DESCANSO_MIN_FUERA = 540;        // 9h — descanso diario mínimo completo fuera de residencia
+  const DESCANSO_EMPALME_FUERA = 360;    // 6h — mínimo para finalizar jornada fuera de residencia
+  const DESCANSO_ENTRE_CICLOS_NORMAL = 3720; // 62h — descanso mínimo entre ciclos (ciclo normal 5 días)
+  const DESCANSO_ENTRE_CICLOS_REDUCIDO = 2280; // 38h — descanso mínimo entre ciclos reducidos
+  const LIMITE_MENSUAL_GRAFIADO = 1500;  // 25h — máximo de mayor dedicación + merma por mes
+  const LIMITE_COMPENSACION = 1800;      // 30h — a partir de aquí el exceso va al fondo de compensación
+  const FONDO_COMPENSACION_DESCANSO = 433; // 7h 13min — cada vez que se acumula esto, se genera 1 descanso compensatorio
+
   const analyzeCompliance = useMemo(() => {
     const violations = [];
     const warnings = [];
+    const enlacesDeJornada = []; // días fusionados por empalme
     const summary = {
-      jornadaMaximaViolations: 0,
+      jornadaEfectivaViolations: 0,
       servicioTrenesViolations: 0,
       turnoMaximoViolations: 0,
-      descansoSemanalViolations: 0,
+      descansoEntreciclasViolations: 0,
       descansoDesvinculadoViolations: 0,
       totalMayorDedicacion: 0,
       totalMermaDescanso: 0,
-      totalHorasExtra: 0, // NUEVO
-      totalEmpalmes: 0, // NUEVO
-      mermaPernoctaResidencia: 0, // NUEVO
-      mermaPernoctaFuera: 0, // NUEVO
-      limiteMensualExceeded: false
+      totalHorasExtraCiclo: 0,
+      totalEmpalmes: 0,
+      descansosSinDisfrutar: 0,
+      limiteMensualExceeded: false,
+      fondoCompensacion: 0,
+      descansosCompensatorios: 0,
     };
-    
-    // 1. Verificar Jornada Máxima Diaria (9 horas = 540 minutos de trabajo efectivo ajustado)
-    // 2. Verificar Servicio en Trenes (máximo 9 horas)
-    // 3. Verificar Límite Máximo del Turno (11 horas = 660 minutos)
-    // 4. Calcular Mayor Dedicación (exceso sobre 9h naturales del turno)
-    
-    for (const day of monthAnalysis) {
-      if (day.type === 'DESCANSO') continue;
-      
-      const jornadaMaxima = 540; // 9 horas en minutos
-      const mayorDedicacionUmbral = 493; // 8h 13min en minutos
-      const jornadaMaximaCiclo = 2165; // 36h 05min en minutos (para horas extra)
-      const descansoSemanalMinimo = 3720; // 62 horas en minutos
-      const descansoMinimoResidencia = 840; // 14 horas en minutos
-      const descansoEmpalmeResidencia = 600; // 10 horas en minutos
-      const descansoMinimoFueraResidencia = 540; // 9 horas en minutos
-      const descansoEmpalmeFueraResidencia = 360; // 6 horas en minutos
-      const turnoMaximo = 660; // 11 horas en minutos
-      
-      // Mayor dedicación: exceso sobre 9h naturales del turno (ya precalculado)
+
+    // ── PASO 1: Detectar enlaces de jornada (empalmes) ──────────────────────
+    // Cuando el descanso entre dos turnos consecutivos NO alcanza el mínimo para
+    // finalizar jornada (10h resid. / 6h fuera), ambos turnos se fusionan en una
+    // única jornada ordinaria (Marco Regulador — Descanso diario).
+    const workDaysSeq = monthAnalysis.filter(d => d.type === 'TRABAJO');
+    const enlaceSet = new Set(); // índices (en workDaysSeq) del 2º turno de un empalme
+
+    for (let i = 0; i < workDaysSeq.length - 1; i++) {
+      const cur = workDaysSeq[i];
+      const nxt = workDaysSeq[i + 1];
+      if (cur.endTime === null || nxt.startTime === null) continue;
+
+      // Descanso real entre ambos turnos (pueden ser días consecutivos o separados por descansos)
+      const curIdx = monthAnalysis.findIndex(d => d.day === cur.day);
+      const nxtIdx = monthAnalysis.findIndex(d => d.day === nxt.day);
+      const calendarDaysBetween = nxtIdx - curIdx; // días de calendario entre ambos
+      let restMinutes = (calendarDaysBetween * 24 * 60) - cur.endTime + nxt.startTime;
+      if (calendarDaysBetween === 1) {
+        restMinutes = (24 * 60 - cur.endTime) + nxt.startTime;
+      }
+
+      // El umbral de empalme depende de si el turno anterior termina en residencia o fuera
+      const umbralEmpalme = cur.isInResidence ? DESCANSO_EMPALME_RESIDENCIA : DESCANSO_EMPALME_FUERA;
+
+      if (restMinutes < umbralEmpalme) {
+        // ENLACE DE JORNADA: fusionar los dos turnos
+        enlaceSet.add(i + 1); // el segundo turno queda absorbido por el primero
+        const jornadaFusionadaMinutos = cur.totalShiftMinutes + restMinutes + nxt.totalShiftMinutes;
+        const mayorDedicFusionada = Math.max(0, jornadaFusionadaMinutos - MAYOR_DEDICACION_UMBRAL);
+
+        enlacesDeJornada.push({
+          dia1: cur.day,
+          dia2: nxt.day,
+          key1: cur.key,
+          key2: nxt.key,
+          descansoMinutos: restMinutes,
+          umbralEmpalme,
+          jornadaFusionadaMinutos,
+          mayorDedicFusionada,
+          esResidencia: cur.isInResidence,
+        });
+
+        summary.totalEmpalmes++;
+        violations.push({
+          type: 'ENLACE_DE_JORNADA',
+          severity: 'critica',
+          day: cur.day,
+          key: cur.key,
+          dayName: cur.dayName,
+          value: restMinutes,
+          limit: umbralEmpalme,
+          message: `Enlace de jornada días ${cur.day}-${nxt.day} (Claves ${cur.key}/${nxt.key}): descanso de ${formatMinutes(restMinutes)} inferior al mínimo de ${formatMinutes(umbralEmpalme)} para finalizar jornada. Jornada fusionada: ${formatMinutes(jornadaFusionadaMinutos)}, mayor dedicación: ${formatMinutes(mayorDedicFusionada)}`
+        });
+      }
+    }
+
+    // ── PASO 2: Verificaciones diarias ──────────────────────────────────────
+    for (let i = 0; i < workDaysSeq.length; i++) {
+      const day = workDaysSeq[i];
+      if (enlaceSet.has(i)) continue; // turno absorbido por enlace, no computar dos veces
+
+      // Mayor dedicación (jornada ordinaria > 8h 13min)
       if (day.mayorDedicacionMinutes > 0) {
         summary.totalMayorDedicacion += day.mayorDedicacionMinutes;
-      }
-      
-      // Jornada máxima diaria de trabajo efectivo (con regla de esperas aplicada)
-      if (day.adjustedEffectiveMinutes > jornadaMaxima) {
-        const exceso = day.adjustedEffectiveMinutes - jornadaMaxima;
-        summary.jornadaMaximaViolations++;
-        violations.push({
-          type: 'JORNADA_MAXIMA_EFECTIVA',
-          severity: 'alta',
-          day: day.day,
-          key: day.key,
-          dayName: day.dayName,
-          value: day.adjustedEffectiveMinutes,
-          limit: jornadaMaxima,
-          excess: exceso,
-          message: `Día ${day.day} (Clave ${day.key}): Trabajo efectivo de ${formatMinutes(day.adjustedEffectiveMinutes)} supera las 9h máximas. Exceso: ${formatMinutes(exceso)}`
-        });
-      }
-      
-      // Servicio en trenes (máximo 9 horas)
-      if (day.trainServiceMinutes > jornadaMaxima) {
-        const exceso = day.trainServiceMinutes - jornadaMaxima;
-        summary.servicioTrenesViolations++;
-        violations.push({
-          type: 'SERVICIO_TRENES',
-          severity: 'alta',
-          day: day.day,
-          key: day.key,
-          dayName: day.dayName,
-          value: day.trainServiceMinutes,
-          limit: jornadaMaxima,
-          excess: exceso,
-          message: `Día ${day.day} (Clave ${day.key}): Servicio en trenes de ${formatMinutes(day.trainServiceMinutes)} supera las 9h máximas. Exceso: ${formatMinutes(exceso)}`
-        });
-      }
-      
-      // Límite máximo del turno (11 horas naturales)
-      if (day.totalShiftMinutes > turnoMaximo) {
-        const exceso = day.totalShiftMinutes - turnoMaximo;
-        summary.turnoMaximoViolations++;
-        violations.push({
-          type: 'TURNO_MAXIMO',
-          severity: 'critica',
-          day: day.day,
-          key: day.key,
-          dayName: day.dayName,
-          value: day.totalShiftMinutes,
-          limit: turnoMaximo,
-          excess: exceso,
-          message: `Día ${day.day} (Clave ${day.key}): Turno de ${formatMinutes(day.totalShiftMinutes)} supera las 11h máximas. El interventor debería abandonar el servicio. Exceso: ${formatMinutes(exceso)}`
-        });
-      }
-      
-      // Advertencia si se acerca al límite (más de 10h de turno)
-      if (day.totalShiftMinutes > 600 && day.totalShiftMinutes <= turnoMaximo) {
-        warnings.push({
-          type: 'TURNO_CERCANO_LIMITE',
-          day: day.day,
-          key: day.key,
-          dayName: day.dayName,
-          value: day.totalShiftMinutes,
-          message: `Día ${day.day} (Clave ${day.key}): Turno de ${formatMinutes(day.totalShiftMinutes)} se acerca al límite de 11h`
-        });
-      }
-      
-      // Advertencia de mayor dedicación en el día
-      if (day.mayorDedicacionMinutes > 0) {
         warnings.push({
           type: 'MAYOR_DEDICACION',
           day: day.day,
           key: day.key,
           dayName: day.dayName,
           value: day.mayorDedicacionMinutes,
-          message: `Día ${day.day} (Clave ${day.key}): Mayor dedicación de ${formatMinutes(day.mayorDedicacionMinutes)} (turno de ${formatMinutes(day.totalShiftMinutes)} supera 9h naturales)`
+          message: `Día ${day.day} (Clave ${day.key}): Mayor dedicación de ${formatMinutes(day.mayorDedicacionMinutes)} — jornada ordinaria de ${formatMinutes(day.totalShiftMinutes)} supera las 8h 13min`
+        });
+      }
+
+      // Jornada efectiva máxima diaria (9h)
+      // La normativa fija la jornada efectiva máxima en 9h cuando hay ampliación,
+      // y la ordinaria en 7h 13min por turno. Se avisa si se supera el umbral efectivo.
+      if (day.adjustedEffectiveMinutes > 540) {
+        const exceso = day.adjustedEffectiveMinutes - 540;
+        summary.jornadaEfectivaViolations++;
+        violations.push({
+          type: 'JORNADA_EFECTIVA_MAXIMA',
+          severity: 'alta',
+          day: day.day,
+          key: day.key,
+          dayName: day.dayName,
+          value: day.adjustedEffectiveMinutes,
+          limit: 540,
+          excess: exceso,
+          message: `Día ${day.day} (Clave ${day.key}): Jornada efectiva de ${formatMinutes(day.adjustedEffectiveMinutes)} supera las 9h máximas permitidas. Exceso: ${formatMinutes(exceso)}`
+        });
+      }
+
+      // Servicio en trenes (máximo 9 horas)
+      if (day.trainServiceMinutes > 540) {
+        const exceso = day.trainServiceMinutes - 540;
+        summary.servicioTrenesViolations++;
+        violations.push({
+          type: 'SERVICIO_TRENES_MAXIMO',
+          severity: 'alta',
+          day: day.day,
+          key: day.key,
+          dayName: day.dayName,
+          value: day.trainServiceMinutes,
+          limit: 540,
+          excess: exceso,
+          message: `Día ${day.day} (Clave ${day.key}): Servicio en trenes de ${formatMinutes(day.trainServiceMinutes)} supera las 9h máximas. Exceso: ${formatMinutes(exceso)}`
+        });
+      }
+
+      // Advertencia si turno > 10h (se acerca al límite de jornada ordinaria ampliada)
+      if (day.totalShiftMinutes > 600) {
+        warnings.push({
+          type: 'TURNO_CERCANO_LIMITE',
+          day: day.day,
+          key: day.key,
+          dayName: day.dayName,
+          value: day.totalShiftMinutes,
+          message: `Día ${day.day} (Clave ${day.key}): Jornada ordinaria de ${formatMinutes(day.totalShiftMinutes)} (>10h) — revisa si está justificada por única circulación o ida/regreso`
         });
       }
     }
-    
-    // 4. Calcular descansos entre jornadas
+
+    // Sumar mayor dedicación de enlaces de jornada (reemplaza los dos turnos)
+    for (const enlace of enlacesDeJornada) {
+      summary.totalMayorDedicacion += enlace.mayorDedicFusionada;
+    }
+
+    // ── PASO 3: Descansos diarios entre turnos consecutivos ─────────────────
     const restPeriods = [];
-    for (let i = 0; i < monthAnalysis.length - 1; i++) {
-      const currentDay = monthAnalysis[i];
-      const nextDay = monthAnalysis[i + 1];
-      
-      if (currentDay.type === 'TRABAJO' && nextDay.type === 'TRABAJO') {
-        // Calcular descanso: desde fin de jornada actual hasta inicio de siguiente
-        const endTime = currentDay.endTime;
-        const startTime = nextDay.startTime;
-        
-        if (endTime !== null && startTime !== null) {
-          // Tiempo hasta medianoche + tiempo desde medianoche al día siguiente
-          let restMinutes = (24 * 60 - endTime) + startTime;
-          
-          restPeriods.push({
-            fromDay: currentDay.day,
-            toDay: nextDay.day,
-            fromKey: currentDay.key,
-            toKey: nextDay.key,
-            minutes: restMinutes,
-            fromInResidence: currentDay.isInResidence,
-            toInResidence: nextDay.isInResidence
-          });
-          
-          // Verificar descanso mínimo entre jornadas
-          const descansoMinimo = 11 * 60; // 11 horas mínimo entre jornadas
-          if (restMinutes < descansoMinimo) {
-            const merma = descansoMinimo - restMinutes;
-            summary.totalMermaDescanso += merma;
-            violations.push({
-              type: 'DESCANSO_ENTRE_JORNADAS',
-              severity: 'media',
-              fromDay: currentDay.day,
-              toDay: nextDay.day,
-              value: restMinutes,
-              limit: descansoMinimo,
-              excess: merma,
-              message: `Descanso entre día ${currentDay.day} y ${nextDay.day}: ${formatMinutes(restMinutes)} (mínimo recomendado: 11h). Merma: ${formatMinutes(merma)}`
-            });
-          }
-        }
+    for (let i = 0; i < workDaysSeq.length - 1; i++) {
+      if (enlaceSet.has(i + 1)) continue; // este par ya es un enlace, ya contabilizado
+      const cur = workDaysSeq[i];
+      const nxt = workDaysSeq[i + 1];
+      if (cur.endTime === null || nxt.startTime === null) continue;
+
+      const curIdx = monthAnalysis.findIndex(d => d.day === cur.day);
+      const nxtIdx = monthAnalysis.findIndex(d => d.day === nxt.day);
+      const calDays = nxtIdx - curIdx;
+      let restMinutes;
+      if (calDays === 1) {
+        restMinutes = (24 * 60 - cur.endTime) + nxt.startTime;
+      } else {
+        restMinutes = (calDays * 24 * 60) - cur.endTime + nxt.startTime;
+      }
+
+      // Umbral según ubicación al finalizar el turno
+      const descansoMinCompleto = cur.isInResidence ? DESCANSO_MIN_RESIDENCIA : DESCANSO_MIN_FUERA;
+      const descansoEmpalme = cur.isInResidence ? DESCANSO_EMPALME_RESIDENCIA : DESCANSO_EMPALME_FUERA;
+      const lugar = cur.isInResidence ? 'residencia' : 'fuera de residencia';
+
+      restPeriods.push({
+        fromDay: cur.day,
+        toDay: nxt.day,
+        fromKey: cur.key,
+        toKey: nxt.key,
+        minutes: restMinutes,
+        descansoMinCompleto,
+        descansoEmpalme,
+        fromInResidence: cur.isInResidence,
+      });
+
+      if (restMinutes >= descansoEmpalme && restMinutes < descansoMinCompleto) {
+        // Merma de descanso diario
+        const merma = descansoMinCompleto - restMinutes;
+        summary.totalMermaDescanso += merma;
+        violations.push({
+          type: 'MERMA_DESCANSO_DIARIO',
+          severity: 'media',
+          fromDay: cur.day,
+          toDay: nxt.day,
+          value: restMinutes,
+          limit: descansoMinCompleto,
+          excess: merma,
+          message: `Merma de descanso diario entre días ${cur.day} y ${nxt.day} (${lugar}): descanso de ${formatMinutes(restMinutes)}, faltan ${formatMinutes(merma)} para alcanzar las ${formatMinutes(descansoMinCompleto)} mínimas`
+        });
       }
     }
-    
-    // 5. Analizar descansos semanales (buscar secuencias de descanso)
-    let consecutiveRestDays = 0;
-    let restStartDay = null;
-    let totalRestHours = 0;
-    let hoursInResidence = 0;
-    let hoursOutResidence = 0;
-    let lastWorkDayBeforeRest = null;
-    
-    for (let i = 0; i < monthAnalysis.length; i++) {
+
+    // ── PASO 4: Descanso entre ciclos (ciclos normales de 5 días) ───────────
+    // Se identifica cada bloque de descanso ordinario (días DESCANSO) entre ciclos
+    // y se aplica la tabla normativa de 4 niveles.
+    let i = 0;
+    while (i < monthAnalysis.length) {
       const day = monthAnalysis[i];
-      
       if (day.type === 'DESCANSO') {
-        if (consecutiveRestDays === 0) {
-          restStartDay = day.day;
-          // Buscar el último día de trabajo antes del descanso
-          for (let j = i - 1; j >= 0; j--) {
-            if (monthAnalysis[j].type === 'TRABAJO') {
-              lastWorkDayBeforeRest = monthAnalysis[j];
-              break;
+        // Encontrar inicio y fin del bloque de descanso
+        let restBlockStart = i;
+        let restBlockEnd = i;
+        while (restBlockEnd + 1 < monthAnalysis.length && monthAnalysis[restBlockEnd + 1].type === 'DESCANSO') {
+          restBlockEnd++;
+        }
+        const numDescansos = restBlockEnd - restBlockStart + 1;
+
+        // Último turno antes del descanso y primer turno después
+        let prevWorkDay = null;
+        for (let j = restBlockStart - 1; j >= 0; j--) {
+          if (monthAnalysis[j].type === 'TRABAJO') { prevWorkDay = monthAnalysis[j]; break; }
+        }
+        let nextWorkDay = null;
+        for (let j = restBlockEnd + 1; j < monthAnalysis.length; j++) {
+          if (monthAnalysis[j].type === 'TRABAJO') { nextWorkDay = monthAnalysis[j]; break; }
+        }
+
+        if (prevWorkDay && nextWorkDay && prevWorkDay.endTime !== null && nextWorkDay.startTime !== null) {
+          // Tiempo total del descanso entre ciclos
+          const calDaysRest = (restBlockEnd - restBlockStart + 1) + 1; // días DESCANSO + 1 día calendario
+          const totalRestMinutes =
+            (24 * 60 - prevWorkDay.endTime) +
+            (restBlockEnd - restBlockStart) * 24 * 60 +
+            nextWorkDay.startTime;
+
+          const restHours = totalRestMinutes / 60;
+
+          // Tabla normativa ciclos normales (2 descansos = 62h mínimo grafiado)
+          // < 62h pero ≥ 48h → merma descanso último turno (62h - tiempo)
+          // < 48h pero ≥ 38h → 1 descanso sin disfrutar
+          // < 38h pero ≥ 24h → 1 descanso sin disfrutar + merma (38h - tiempo)
+          // < 24h → 2 descansos sin disfrutar
+          if (numDescansos >= 2) {
+            if (totalRestMinutes < 1440) { // < 24h → 2 descansos no disfrutados
+              summary.descansoEntreciclasViolations++;
+              summary.descansosSinDisfrutar += 2;
+              violations.push({
+                type: 'DESCANSO_ENTRE_CICLOS',
+                severity: 'critica',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                limit: DESCANSO_ENTRE_CICLOS_NORMAL,
+                message: `Descanso entre ciclos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — menos de 24h: 2 descansos ordinarios no disfrutados. Se generan 2 descansos alternativos.`
+              });
+            } else if (totalRestMinutes < DESCANSO_ENTRE_CICLOS_REDUCIDO) { // < 38h → 1 descanso no disfrutado + merma
+              const merma = DESCANSO_ENTRE_CICLOS_REDUCIDO - totalRestMinutes;
+              summary.descansoEntreciclasViolations++;
+              summary.descansosSinDisfrutar++;
+              summary.totalMermaDescanso += merma;
+              violations.push({
+                type: 'DESCANSO_ENTRE_CICLOS',
+                severity: 'critica',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                limit: DESCANSO_ENTRE_CICLOS_NORMAL,
+                message: `Descanso entre ciclos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — 1 descanso ordinario no disfrutado + merma de ${formatMinutes(merma)} en último turno. Se genera 1 descanso alternativo.`
+              });
+            } else if (totalRestMinutes < 2880) { // < 48h → 1 descanso no disfrutado
+              summary.descansosSinDisfrutar++;
+              warnings.push({
+                type: 'DESCANSO_NO_DISFRUTADO',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                message: `Descanso entre ciclos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — 1 descanso ordinario no disfrutado. Derecho a descanso alternativo dentro de 14 semanas.`
+              });
+            } else if (totalRestMinutes < DESCANSO_ENTRE_CICLOS_NORMAL) { // < 62h → merma descanso
+              const merma = DESCANSO_ENTRE_CICLOS_NORMAL - totalRestMinutes;
+              summary.descansoEntreciclasViolations++;
+              summary.totalMermaDescanso += merma;
+              violations.push({
+                type: 'DESCANSO_ENTRE_CICLOS',
+                severity: 'alta',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                limit: DESCANSO_ENTRE_CICLOS_NORMAL,
+                message: `Descanso entre ciclos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — merma de ${formatMinutes(merma)} en el descanso diario del último turno del ciclo anterior.`
+              });
+            }
+          } else if (numDescansos === 1) {
+            // Ciclo reducido: mínimo 38h
+            if (totalRestMinutes < 1440) { // < 24h → 1 descanso no disfrutado
+              summary.descansosSinDisfrutar++;
+              violations.push({
+                type: 'DESCANSO_ENTRE_CICLOS_REDUCIDO',
+                severity: 'critica',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                limit: DESCANSO_ENTRE_CICLOS_REDUCIDO,
+                message: `Descanso entre ciclos reducidos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — 1 descanso ordinario no disfrutado. Se genera 1 descanso alternativo.`
+              });
+            } else if (totalRestMinutes < DESCANSO_ENTRE_CICLOS_REDUCIDO) { // < 38h → merma
+              const merma = DESCANSO_ENTRE_CICLOS_REDUCIDO - totalRestMinutes;
+              summary.descansoEntreciclasViolations++;
+              summary.totalMermaDescanso += merma;
+              violations.push({
+                type: 'DESCANSO_ENTRE_CICLOS_REDUCIDO',
+                severity: 'alta',
+                fromDay: prevWorkDay.day,
+                toDay: nextWorkDay.day,
+                value: totalRestMinutes,
+                limit: DESCANSO_ENTRE_CICLOS_REDUCIDO,
+                message: `Descanso entre ciclos reducidos días ${prevWorkDay.day}-${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} — merma de ${formatMinutes(merma)} para alcanzar las 38h mínimas.`
+              });
             }
           }
         }
-        consecutiveRestDays++;
-        totalRestHours += 24; // 24 horas por día de descanso
-        hoursInResidence += 24; // Asumimos descanso en residencia
+        i = restBlockEnd + 1;
       } else {
-        if (consecutiveRestDays >= 2) {
-          // Calcular tiempo real de descanso
-          let actualRestMinutes = consecutiveRestDays * 24 * 60;
-          
-          // Añadir tiempo desde fin de última jornada hasta medianoche
-          if (lastWorkDayBeforeRest && lastWorkDayBeforeRest.endTime) {
-            actualRestMinutes += (24 * 60 - lastWorkDayBeforeRest.endTime);
-          }
-          
-          // Añadir tiempo desde medianoche hasta inicio de siguiente jornada
-          if (day.startTime) {
-            actualRestMinutes += day.startTime;
-          }
-          
-          const descansoSemanalMinimo = 62 * 60; // 62 horas (Art. 2.49)
-          
-          if (actualRestMinutes < descansoSemanalMinimo) {
-            summary.descansoSemanalViolations++;
-            const deficit = descansoSemanalMinimo - actualRestMinutes;
-            violations.push({
-              type: 'DESCANSO_SEMANAL',
-              severity: 'alta',
-              fromDay: restStartDay,
-              toDay: day.day - 1,
-              days: consecutiveRestDays,
-              value: actualRestMinutes,
-              limit: descansoSemanalMinimo,
-              deficit: deficit,
-              message: `Periodo de descanso (días ${restStartDay}-${day.day - 1}): ${formatMinutes(actualRestMinutes)} no alcanza las 60h mínimas. Déficit: ${formatMinutes(deficit)}`
-            });
-          }
-        }
-        
-        consecutiveRestDays = 0;
-        totalRestHours = 0;
-        hoursInResidence = 0;
-        hoursOutResidence = 0;
-        lastWorkDayBeforeRest = null;
+        i++;
       }
     }
-    
-    // 6. Verificar descanso desvinculado (38 horas mínimo entre ciclos de trabajo)
-    // Buscar transiciones de trabajo a descanso a trabajo
-    for (let i = 1; i < monthAnalysis.length - 1; i++) {
-      const prevDay = monthAnalysis[i - 1];
-      const currentDay = monthAnalysis[i];
-      const nextDay = monthAnalysis[i + 1];
-      
-      // Si encontramos un período de descanso
-      if (prevDay.type === 'TRABAJO' && currentDay.type === 'DESCANSO') {
-        // Buscar el siguiente día de trabajo
-        let nextWorkDayIndex = -1;
-        for (let j = i + 1; j < monthAnalysis.length; j++) {
-          if (monthAnalysis[j].type === 'TRABAJO') {
-            nextWorkDayIndex = j;
-            break;
-          }
+
+    // ── PASO 5: Jornada cíclica y horas extraordinarias ─────────────────────
+    // La jornada cíclica = suma jornada efectiva de todos los turnos del ciclo
+    //                     + 50% de los viajes sin servicio (SS) del ciclo.
+    // Máximo cíclico = nº días trabajo del ciclo × 7h 13min (433 min).
+    // El exceso son horas extraordinarias → van al fondo de compensación.
+    const ciclosAnalysis = [];
+    let cicloActual = [];
+    let diasTrabajadosEnCiclo = 0;
+    let cicloIdx = 0;
+
+    for (const day of monthAnalysis) {
+      if (day.type === 'TRABAJO') {
+        cicloActual.push(day);
+        diasTrabajadosEnCiclo++;
+
+        if (diasTrabajadosEnCiclo === 5) {
+          const jornadaEfectivaCiclo = cicloActual.reduce((s, d) => s + d.effectiveMinutes, 0);
+          const ssCiclo = cicloActual.reduce((s, d) => s + d.ssMinutes, 0);
+          const jornadaCiclica = jornadaEfectivaCiclo + Math.round(ssCiclo * 0.5);
+          const maximoCiclico = 5 * JORNADA_EFECTIVA_MAXIMA; // 5 × 7h13min = 2165 min
+          const horasExtraMin = Math.max(0, jornadaCiclica - maximoCiclico);
+
+          ciclosAnalysis.push({
+            idx: ++cicloIdx,
+            dias: cicloActual.map(d => d.day),
+            claves: cicloActual.map(d => d.key),
+            jornadaEfectivaCiclo,
+            ssCiclo,
+            jornadaCiclica,
+            maximoCiclico,
+            horasExtraMin,
+            completo: true,
+          });
+          summary.totalHorasExtraCiclo += horasExtraMin;
+          cicloActual = [];
+          diasTrabajadosEnCiclo = 0;
         }
-        
-        if (nextWorkDayIndex > 0) {
-          const nextWorkDay = monthAnalysis[nextWorkDayIndex];
-          const restDays = nextWorkDayIndex - i;
-          
-          // Calcular descanso total
-          let totalRestMinutes = restDays * 24 * 60;
-          
-          // Añadir tiempo desde fin de última jornada
-          if (prevDay.endTime) {
-            totalRestMinutes += (24 * 60 - prevDay.endTime);
-          }
-          
-          // Añadir tiempo hasta inicio de siguiente jornada
-          if (nextWorkDay.startTime) {
-            totalRestMinutes += nextWorkDay.startTime;
-          }
-          
-          const descansoDesvinculadoMinimo = 38 * 60; // 38 horas
-          
-          if (totalRestMinutes < descansoDesvinculadoMinimo) {
-            summary.descansoDesvinculadoViolations++;
-            violations.push({
-              type: 'DESCANSO_DESVINCULADO',
-              severity: 'alta',
-              fromDay: prevDay.day,
-              toDay: nextWorkDay.day,
-              value: totalRestMinutes,
-              limit: descansoDesvinculadoMinimo,
-              message: `Descanso desvinculado entre día ${prevDay.day} y ${nextWorkDay.day}: ${formatMinutes(totalRestMinutes)} no alcanza las 38h mínimas`
-            });
-          }
-          
-          // Verificar niveles de descanso según normativa
-          const horasDescanso = totalRestMinutes / 60;
-          
-          if (horasDescanso < 24) {
-            warnings.push({
-              type: 'DESCANSO_NULO',
-              message: `Período ${prevDay.day}-${nextWorkDay.day}: Con menos de 24h de descanso (${formatMinutes(totalRestMinutes)}), no se ha disfrutado ninguno de los dos días de descanso`
-            });
-          } else if (horasDescanso < 38) {
-            warnings.push({
-              type: 'DESCANSO_MERMADO',
-              message: `Período ${prevDay.day}-${nextWorkDay.day}: Con ${formatMinutes(totalRestMinutes)} de descanso, el primer descanso no se disfrutó y el segundo está mermado`
-            });
-          } else if (horasDescanso < 48) {
-            warnings.push({
-              type: 'PRIMER_DESCANSO_NO_DISFRUTADO',
-              message: `Período ${prevDay.day}-${nextWorkDay.day}: Con ${formatMinutes(totalRestMinutes)} de descanso, no se disfrutó el primer día de descanso`
-            });
-          }
-        }
+      } else if (day.type === 'DESCANSO' && diasTrabajadosEnCiclo > 0) {
+        // fin de ciclo al llegar a descansos
+        const jornadaEfectivaCiclo = cicloActual.reduce((s, d) => s + d.effectiveMinutes, 0);
+        const ssCiclo = cicloActual.reduce((s, d) => s + d.ssMinutes, 0);
+        const jornadaCiclica = jornadaEfectivaCiclo + Math.round(ssCiclo * 0.5);
+        const maximoCiclico = diasTrabajadosEnCiclo * JORNADA_EFECTIVA_MAXIMA;
+        const horasExtraMin = Math.max(0, jornadaCiclica - maximoCiclico);
+
+        ciclosAnalysis.push({
+          idx: ++cicloIdx,
+          dias: cicloActual.map(d => d.day),
+          claves: cicloActual.map(d => d.key),
+          jornadaEfectivaCiclo,
+          ssCiclo,
+          jornadaCiclica,
+          maximoCiclico,
+          horasExtraMin,
+          completo: diasTrabajadosEnCiclo >= 3,
+        });
+        summary.totalHorasExtraCiclo += horasExtraMin;
+        cicloActual = [];
+        diasTrabajadosEnCiclo = 0;
       }
     }
-    
-    // 7. Verificar límite mensual (25 horas de mayor dedicación + merma)
+    // Ciclo incompleto al final del mes (sin descanso cierre)
+    if (cicloActual.length > 0) {
+      const jornadaEfectivaCiclo = cicloActual.reduce((s, d) => s + d.effectiveMinutes, 0);
+      const ssCiclo = cicloActual.reduce((s, d) => s + d.ssMinutes, 0);
+      const jornadaCiclica = jornadaEfectivaCiclo + Math.round(ssCiclo * 0.5);
+      const maximoCiclico = cicloActual.length * JORNADA_EFECTIVA_MAXIMA;
+      const horasExtraMin = Math.max(0, jornadaCiclica - maximoCiclico);
+
+      ciclosAnalysis.push({
+        idx: ++cicloIdx,
+        dias: cicloActual.map(d => d.day),
+        claves: cicloActual.map(d => d.key),
+        jornadaEfectivaCiclo,
+        ssCiclo,
+        jornadaCiclica,
+        maximoCiclico,
+        horasExtraMin,
+        completo: false,
+      });
+      summary.totalHorasExtraCiclo += horasExtraMin;
+    }
+
+    // ── PASO 6: Cómputo mensual de excesos y mermas ─────────────────────────
+    // Se cierra al final del último ciclo COMPLETO del mes.
+    // Si el total no supera las 30h → se pierde todo y se reinicia.
+    // Si supera las 30h → el exceso va al fondo de compensación.
+    // El límite grafiado (25h) aplica en cualquier caso.
     const totalExcesoMensual = summary.totalMayorDedicacion + summary.totalMermaDescanso;
-    const limiteMensual = 25 * 60; // 25 horas
-    
-    if (totalExcesoMensual > limiteMensual) {
+
+    if (totalExcesoMensual > LIMITE_MENSUAL_GRAFIADO) {
       summary.limiteMensualExceeded = true;
       violations.push({
-        type: 'LIMITE_MENSUAL',
+        type: 'LIMITE_MENSUAL_EXCEDIDO',
         severity: 'critica',
         value: totalExcesoMensual,
-        limit: limiteMensual,
-        message: `Límite mensual excedido: ${formatMinutes(totalExcesoMensual)} de mayor dedicación + merma (máximo: 25h)`
+        limit: LIMITE_MENSUAL_GRAFIADO,
+        message: `Cómputo mensual: ${formatMinutes(totalExcesoMensual)} de mayor dedicación + merma supera el límite de 25h grafiado. Exceso: ${formatMinutes(totalExcesoMensual - LIMITE_MENSUAL_GRAFIADO)}`
       });
     }
-    
-    // 8. Verificar si requiere compensación (más de 30 horas)
-    const limiteCompensacion = 30 * 60; // 30 horas
-    if (totalExcesoMensual > limiteCompensacion) {
-      const horasACompensar = totalExcesoMensual - limiteCompensacion;
+
+    // ── PASO 7: Fondo de compensación ───────────────────────────────────────
+    // Horas extraordinarias (exceso de jornada cíclica) se acumulan en el fondo.
+    // Cada 7h 13min acumuladas → 1 descanso compensatorio (a disfrutar en 14 semanas).
+    // Si el cómputo mensual supera 30h, el exceso también va al fondo.
+    let fondoCompensacion = summary.totalHorasExtraCiclo;
+    if (totalExcesoMensual > LIMITE_COMPENSACION) {
+      fondoCompensacion += totalExcesoMensual - LIMITE_COMPENSACION;
+    }
+    const descansosCompensatorios = Math.floor(fondoCompensacion / FONDO_COMPENSACION_DESCANSO);
+    summary.fondoCompensacion = fondoCompensacion;
+    summary.descansosCompensatorios = descansosCompensatorios;
+
+    if (fondoCompensacion > 0) {
       warnings.push({
-        type: 'REQUIERE_COMPENSACION',
-        value: horasACompensar,
-        message: `Se han acumulado ${formatMinutes(totalExcesoMensual)} de exceso. Las ${formatMinutes(horasACompensar)} que superan las 30h deben compensarse con descanso en las próximas 14 semanas`
+        type: 'FONDO_COMPENSACION',
+        value: fondoCompensacion,
+        message: `Fondo de compensación: ${formatMinutes(fondoCompensacion)} acumulados${descansosCompensatorios > 0 ? ` → ${descansosCompensatorios} descanso(s) compensatorio(s) generado(s) (a disfrutar en las próximas 14 semanas)` : ' (aún no se genera descanso compensatorio; se necesitan 7h 13min)'}`
       });
     }
-    
+
+    if (totalExcesoMensual > 0 && totalExcesoMensual <= LIMITE_COMPENSACION) {
+      warnings.push({
+        type: 'COMPUTO_MENSUAL',
+        value: totalExcesoMensual,
+        message: `Cómputo mensual de excesos y mermas: ${formatMinutes(totalExcesoMensual)}. ${totalExcesoMensual <= LIMITE_MENSUAL_GRAFIADO ? 'Dentro del límite de 25h — no genera compensación adicional.' : `Supera las 25h pero no alcanza las 30h — el exceso de ${formatMinutes(totalExcesoMensual - LIMITE_MENSUAL_GRAFIADO)} queda acumulado.`}`
+      });
+    }
+
     return {
       violations: violations.sort((a, b) => {
         const severityOrder = { critica: 0, alta: 1, media: 2, baja: 3 };
@@ -1409,7 +1513,9 @@ const horasExtraCiclo = useMemo(() => {
       warnings,
       summary,
       totalExcesoMensual,
-      restPeriods
+      restPeriods,
+      ciclosAnalysis,
+      enlacesDeJornada,
     };
   }, [monthAnalysis]);
 
@@ -1959,40 +2065,50 @@ const horasExtraCiclo = useMemo(() => {
           );
         })()}
 
-        {/* Horas Extra por Ciclo */}
+        {/* Ciclos: Jornada Cíclica y Horas Extraordinarias */}
         {(() => {
-          if (horasExtraCiclo.ciclos.length === 0) return null;
+          const ciclos = analyzeCompliance.ciclosAnalysis || [];
+          if (ciclos.length === 0) return null;
 
           return (
-            <SeccionColapsable titulo="Horas Extra por Ciclo (5 días)" icono="⏰">
-              <p className="text-xs sm:text-sm text-gray-600 mb-4">
-                Las horas extra se computan cuando se superan las 36h 05min de trabajo efectivo en un ciclo de 5 días.
+            <SeccionColapsable titulo="Jornada Cíclica y Horas Extraordinarias" icono="⏰">
+              <p className="text-xs sm:text-sm text-gray-600 mb-1">
+                La <strong>jornada cíclica</strong> es la jornada efectiva total del ciclo, calculada como la suma de la jornada efectiva de todos sus turnos más el <strong>50% de los viajes sin servicio (SS)</strong> del ciclo. El máximo es <strong>nº días × 7h 13min</strong>. El exceso son <strong>horas extraordinarias</strong>.
+              </p>
+              <p className="text-xs text-gray-500 mb-4">
+                Las horas extraordinarias se acumulan en el fondo de compensación. Cada 7h 13min acumuladas generan un descanso compensatorio a disfrutar en las 14 semanas siguientes.
               </p>
 
               <div className="space-y-3">
-                {horasExtraCiclo.ciclos.map((ciclo, idx) => (
+                {ciclos.map((ciclo) => (
                   <div
-                    key={idx}
-                    className={`p-3 rounded-lg border ${ciclo.horasExtraMinutos > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}
+                    key={ciclo.idx}
+                    className={`p-3 rounded-lg border ${ciclo.horasExtraMin > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                       <div>
-                        <span className="font-medium">Ciclo {idx + 1}</span>
-                        {ciclo.incompleto && <span className="text-xs text-gray-500 ml-2">(incompleto)</span>}
-                        <div className="text-xs text-gray-600">
+                        <span className="font-medium">Ciclo {ciclo.idx}</span>
+                        {!ciclo.completo && <span className="text-xs text-gray-500 ml-2">(incompleto — pendiente de cerrar)</span>}
+                        <div className="text-xs text-gray-600 mt-0.5">
                           Días: {ciclo.dias.join(', ')} | Claves: {ciclo.claves.join(', ')}
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm">
-                          Total: <strong>{formatMinutes(ciclo.totalMinutos)}</strong>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Jornada efectiva: {formatMinutes(ciclo.jornadaEfectivaCiclo)} + 50% SS ({formatMinutes(ciclo.ssCiclo)} → {formatMinutes(Math.round(ciclo.ssCiclo * 0.5))}) = {formatMinutes(ciclo.jornadaCiclica)}
                         </div>
-                        {ciclo.horasExtraMinutos > 0 ? (
-                          <div className="text-red-600 font-medium">
-                            +{formatMinutes(ciclo.horasExtraMinutos)} horas extra
+                      </div>
+                      <div className="text-right min-w-[140px]">
+                        <div className="text-sm">
+                          Jornada cíclica: <strong>{formatMinutes(ciclo.jornadaCiclica)}</strong>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Máximo ({ciclo.dias.length} días × 7h13m): {formatMinutes(ciclo.maximoCiclico)}
+                        </div>
+                        {ciclo.horasExtraMin > 0 ? (
+                          <div className="text-red-600 font-semibold mt-1">
+                            +{formatMinutes(ciclo.horasExtraMin)} H. extraordinarias
                           </div>
                         ) : (
-                          <div className="text-green-600 text-sm">Sin exceso</div>
+                          <div className="text-green-600 text-sm mt-1">Sin exceso</div>
                         )}
                       </div>
                     </div>
@@ -2000,16 +2116,28 @@ const horasExtraCiclo = useMemo(() => {
                 ))}
               </div>
 
-              {horasExtraCiclo.totalHorasExtra > 0 && (
-                <div className="mt-4 p-3 bg-red-100 rounded-lg">
-                  <div className="text-center">
-                    <div className="text-sm text-red-800">Total Horas Extra del Mes</div>
-                    <div className="text-2xl font-bold text-red-600">
-                      {formatMinutes(horasExtraCiclo.totalHorasExtra)}
-                    </div>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-blue-50 p-3 rounded-lg text-center">
+                  <div className="text-sm text-blue-700 font-medium">Total horas extraordinarias</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatMinutes(ciclos.reduce((s, c) => s + c.horasExtraMin, 0))}
                   </div>
                 </div>
-              )}
+                <div className="bg-orange-50 p-3 rounded-lg text-center">
+                  <div className="text-sm text-orange-700 font-medium">Fondo de compensación total</div>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {formatMinutes(analyzeCompliance.summary.fondoCompensacion)}
+                  </div>
+                </div>
+                <div className={`p-3 rounded-lg text-center ${analyzeCompliance.summary.descansosCompensatorios > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <div className={`text-sm font-medium ${analyzeCompliance.summary.descansosCompensatorios > 0 ? 'text-red-700' : 'text-gray-600'}`}>
+                    Descansos compensatorios
+                  </div>
+                  <div className={`text-2xl font-bold ${analyzeCompliance.summary.descansosCompensatorios > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {analyzeCompliance.summary.descansosCompensatorios}
+                  </div>
+                </div>
+              </div>
             </SeccionColapsable>
           );
         })()}
@@ -2050,30 +2178,30 @@ const horasExtraCiclo = useMemo(() => {
             
             {/* Indicadores de cumplimiento */}
             <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3">
-              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.jornadaMaximaViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.jornadaMaximaViolations === 0 ? '✅' : '❌'}</div>
-                <div className="text-[10px] sm:text-xs font-medium">Jornada 9h</div>
-                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.jornadaMaximaViolations}</div>
+              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.jornadaEfectivaViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.jornadaEfectivaViolations === 0 ? '✅' : '❌'}</div>
+                <div className="text-[10px] sm:text-xs font-medium">Jornada ef. 9h</div>
+                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.jornadaEfectivaViolations}</div>
               </div>
               <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.servicioTrenesViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
                 <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.servicioTrenesViolations === 0 ? '✅' : '❌'}</div>
                 <div className="text-[10px] sm:text-xs font-medium">Serv. Trenes</div>
                 <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.servicioTrenesViolations}</div>
               </div>
-              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.turnoMaximoViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.turnoMaximoViolations === 0 ? '✅' : '❌'}</div>
-                <div className="text-[10px] sm:text-xs font-medium">Turno 11h</div>
-                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.turnoMaximoViolations}</div>
+              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.totalEmpalmes === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.totalEmpalmes === 0 ? '✅' : '❌'}</div>
+                <div className="text-[10px] sm:text-xs font-medium">Empalmes</div>
+                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.totalEmpalmes}</div>
               </div>
-              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.descansoSemanalViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.descansoSemanalViolations === 0 ? '✅' : '❌'}</div>
-                <div className="text-[10px] sm:text-xs font-medium">Desc. 60h</div>
-                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.descansoSemanalViolations}</div>
+              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.descansoEntreciclasViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.descansoEntreciclasViolations === 0 ? '✅' : '❌'}</div>
+                <div className="text-[10px] sm:text-xs font-medium">Desc. ciclos</div>
+                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.descansoEntreciclasViolations}</div>
               </div>
-              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.descansoDesvinculadoViolations === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.descansoDesvinculadoViolations === 0 ? '✅' : '❌'}</div>
-                <div className="text-[10px] sm:text-xs font-medium">Desvinc. 38h</div>
-                <div className="text-xs sm:text-sm font-bold">{analyzeCompliance.summary.descansoDesvinculadoViolations}</div>
+              <div className={`p-2 sm:p-3 rounded-lg text-center ${analyzeCompliance.summary.totalHorasExtraCiclo === 0 ? 'bg-green-100' : 'bg-orange-100'}`}>
+                <div className="text-xl sm:text-2xl mb-1">{analyzeCompliance.summary.totalHorasExtraCiclo === 0 ? '✅' : '⚠️'}</div>
+                <div className="text-[10px] sm:text-xs font-medium">H. extra ciclo</div>
+                <div className="text-xs sm:text-sm font-bold">{formatMinutes(analyzeCompliance.summary.totalHorasExtraCiclo)}</div>
               </div>
               <div className={`p-2 sm:p-3 rounded-lg text-center ${!analyzeCompliance.summary.limiteMensualExceeded ? 'bg-green-100' : 'bg-red-100'}`}>
                 <div className="text-xl sm:text-2xl mb-1">{!analyzeCompliance.summary.limiteMensualExceeded ? '✅' : '❌'}</div>
@@ -2083,42 +2211,68 @@ const horasExtraCiclo = useMemo(() => {
             </div>
           </SeccionColapsable>
 
-          {/* Barra de progreso del límite mensual */}
-          <SeccionColapsable titulo="Límite Mensual de Mayor Dedicación + Merma" icono="📊">
+          {/* Cómputo mensual y fondo de compensación */}
+          <SeccionColapsable titulo="Cómputo Mensual de Excesos y Mermas" icono="📊">
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <div className="flex flex-col sm:flex-row sm:justify-between text-xs sm:text-sm mb-1 gap-1">
-                  <span>Acumulado: {formatMinutes(analyzeCompliance.totalExcesoMensual)}</span>
-                  <span className="text-gray-500">Límite: 25h | Compensar: 30h</span>
+                  <span>Acumulado: <strong>{formatMinutes(analyzeCompliance.totalExcesoMensual)}</strong></span>
+                  <span className="text-gray-500">Límite grafiado: 25h | Pasa a compensación: 30h</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-5 sm:h-6 relative overflow-hidden">
-                  <div 
+                  <div
                     className={`h-full rounded-full transition-all ${
-                      analyzeCompliance.totalExcesoMensual / 60 > 30 
-                        ? 'bg-red-500' 
-                        : analyzeCompliance.totalExcesoMensual / 60 > 25 
-                          ? 'bg-orange-500' 
+                      analyzeCompliance.totalExcesoMensual > 1800
+                        ? 'bg-red-500'
+                        : analyzeCompliance.totalExcesoMensual > 1500
+                          ? 'bg-orange-500'
                           : 'bg-green-500'
                     }`}
                     style={{ width: `${Math.min((analyzeCompliance.totalExcesoMensual / (35 * 60)) * 100, 100)}%` }}
                   />
-                  {/* Marcadores */}
                   <div className="absolute top-0 left-0 w-full h-full flex">
-                    <div className="border-r-2 border-yellow-600" style={{ width: `${(25/35)*100}%` }} title="Límite 25h" />
-                    <div className="border-r-2 border-red-600" style={{ width: `${(5/35)*100}%` }} title="Límite 30h" />
+                    <div className="border-r-2 border-yellow-600" style={{ width: `${(25/35)*100}%` }} title="Límite grafiado 25h" />
+                    <div className="border-r-2 border-red-600" style={{ width: `${(5/35)*100}%` }} title="Pasa a fondo de compensación 30h" />
                   </div>
                 </div>
                 <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 mt-1">
                   <span>0h</span>
-                  <span className="text-yellow-600">25h</span>
-                  <span className="text-red-600">30h</span>
+                  <span className="text-yellow-600">25h (límite)</span>
+                  <span className="text-red-600">30h (compensación)</span>
                   <span>35h</span>
                 </div>
               </div>
-              
-              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
-                <p className="mb-2"><strong>Mayor dedicación:</strong> {formatMinutes(analyzeCompliance.summary.totalMayorDedicacion)} (exceso sobre 9h naturales del turno)</p>
-                <p><strong>Merma de descanso:</strong> {formatMinutes(analyzeCompliance.summary.totalMermaDescanso)} (reducción de descansos mínimos)</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-gray-50 p-3 rounded-lg text-xs sm:text-sm">
+                  <p className="font-semibold mb-2 text-gray-700">Desglose del cómputo mensual:</p>
+                  <p className="mb-1"><strong>Mayor dedicación:</strong> {formatMinutes(analyzeCompliance.summary.totalMayorDedicacion)}</p>
+                  <p className="mb-1"><strong>Merma de descanso:</strong> {formatMinutes(analyzeCompliance.summary.totalMermaDescanso)}</p>
+                  <p className="border-t pt-1 mt-1 font-semibold">Total: {formatMinutes(analyzeCompliance.totalExcesoMensual)}</p>
+                  <p className="text-gray-500 mt-1 text-[11px]">
+                    {analyzeCompliance.totalExcesoMensual <= 1500
+                      ? 'No supera las 25h — no genera compensación. El saldo se pierde al cerrar el mes.'
+                      : analyzeCompliance.totalExcesoMensual <= 1800
+                        ? `Supera las 25h pero no alcanza 30h — exceso de ${formatMinutes(analyzeCompliance.totalExcesoMensual - 1500)} acumulado. Aún no genera compensación.`
+                        : `Supera las 30h — ${formatMinutes(analyzeCompliance.totalExcesoMensual - 1800)} pasan al fondo de compensación.`}
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-3 rounded-lg text-xs sm:text-sm">
+                  <p className="font-semibold mb-2 text-blue-700">Fondo de compensación:</p>
+                  <p className="mb-1"><strong>H. extra por ciclos:</strong> {formatMinutes(analyzeCompliance.summary.totalHorasExtraCiclo)}</p>
+                  {analyzeCompliance.totalExcesoMensual > 1800 && (
+                    <p className="mb-1"><strong>Del cómputo mensual:</strong> {formatMinutes(analyzeCompliance.totalExcesoMensual - 1800)}</p>
+                  )}
+                  <p className="border-t pt-1 mt-1 font-semibold">Total fondo: {formatMinutes(analyzeCompliance.summary.fondoCompensacion)}</p>
+                  <p className={`mt-1 font-bold ${analyzeCompliance.summary.descansosCompensatorios > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+                    {analyzeCompliance.summary.descansosCompensatorios > 0
+                      ? `→ ${analyzeCompliance.summary.descansosCompensatorios} descanso(s) compensatorio(s) generado(s)`
+                      : 'Sin descansos compensatorios (se necesitan 7h 13min)'}
+                  </p>
+                  {analyzeCompliance.summary.descansosCompensatorios > 0 && (
+                    <p className="text-[11px] text-orange-700 mt-1">Deben disfrutarse en las 14 semanas siguientes al cierre del mes.</p>
+                  )}
+                </div>
               </div>
             </div>
           </SeccionColapsable>
@@ -2163,6 +2317,42 @@ const horasExtraCiclo = useMemo(() => {
                 ))}
               </div>
             </SeccionColapsable>
+          )}
+
+          {/* Enlace de jornada */}
+          {analyzeCompliance.enlacesDeJornada && analyzeCompliance.enlacesDeJornada.length > 0 && (
+            <SeccionColapsable titulo={`Enlace de Jornada — ${analyzeCompliance.enlacesDeJornada.length} detectado(s)`} icono="🔗">
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                Cuando el descanso entre dos turnos consecutivos no alcanza el mínimo para finalizar jornada (<strong>10h en residencia / 6h fuera</strong>), la normativa obliga a tratar ambos turnos como una única jornada ordinaria. Se recalcula la mayor dedicación sobre el total fusionado.
+              </p>
+              <div className="space-y-3">
+                {analyzeCompliance.enlacesDeJornada.map((enlace, idx) => (
+                  <div key={idx} className="p-3 bg-red-50 border border-red-300 rounded-lg">
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
+                      <div>
+                        <span className="font-semibold text-red-700">Días {enlace.dia1} → {enlace.dia2}</span>
+                        <span className="text-xs text-gray-500 ml-2">(Claves {enlace.key1} / {enlace.key2})</span>
+                        <div className="text-xs mt-1 text-gray-600">
+                          Descanso real: <strong className="text-red-600">{formatMinutes(enlace.descansoMinutos)}</strong> — mínimo para finalizar jornada: {formatMinutes(enlace.umbralEmpalme)} ({enlace.esResidencia ? 'residencia' : 'fuera de residencia'})
+                        </div>
+                      </div>
+                      <div className="text-right text-sm">
+                        <div>Jornada fusionada: <strong>{formatMinutes(enlace.jornadaFusionadaMinutos)}</strong></div>
+                        <div className="text-orange-600 font-medium">Mayor dedicación: {formatMinutes(enlace.mayorDedicFusionada)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SeccionColapsable>
+          )}
+
+          {/* Descansos sin disfrutar */}
+          {analyzeCompliance.summary.descansosSinDisfrutar > 0 && (
+            <div className="p-3 bg-orange-50 border border-orange-300 rounded-lg text-sm">
+              <span className="font-semibold text-orange-700">⚠️ Descansos ordinarios no disfrutados: {analyzeCompliance.summary.descansosSinDisfrutar}</span>
+              <p className="text-xs text-orange-600 mt-1">Cuando por retrasos en la circulación el descanso entre ciclos es inferior al mínimo, se generan descansos alternativos a compensar. Consultar con la empresa para fijar las fechas de disfrute.</p>
+            </div>
           )}
 
           {/* Detalle de jornadas por día */}
@@ -2251,37 +2441,93 @@ const horasExtraCiclo = useMemo(() => {
           </SeccionColapsable>
           
           {/* Referencia de normativa */}
-          <SeccionColapsable titulo="Referencia de Normativa Aplicada" icono="📖">
+          <SeccionColapsable titulo="Referencia de Normativa Aplicada — Marco Regulador de Intervención MD" icono="📖">
+            <p className="text-xs text-gray-500 mb-4">Fuente: Marco Regulador de Intervención MD (Renfe). Los valores aquí recogidos son los que esta aplicación utiliza en sus cálculos.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+
               <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Jornada Máxima Diaria (Art. 2.21)</h4>
-                <p>La duración máxima es de <strong>9 horas</strong> de trabajo efectivo.</p>
-                <p className="text-xs text-gray-600 mt-1">Excepción: turnos de ida y regreso pueden ampliarse si la ida no excede 6h y no hay servicio anterior/posterior.</p>
+                <h4 className="font-semibold text-blue-800 mb-2">Jornada Diaria — Jornada Ordinaria y Efectiva</h4>
+                <p><strong>Jornada ordinaria:</strong> tiempo total del turno desde inicio hasta fin.</p>
+                <p className="mt-1"><strong>Jornada efectiva:</strong> jornada ordinaria menos el único intervalo no efectivo de mayor duración del turno (esperas o viajes sin servicio).</p>
+                <p className="mt-1"><strong>Máximo ordinario:</strong> 9h (amplíable si el turno consiste en un único servicio hasta destino, o un servicio de ida y regreso con ida ≤6h y sin servicios anterior/posterior).</p>
+                <p className="mt-1 text-xs text-gray-600">La normativa establece 7h 13min como jornada efectiva máxima individual; el Marco Regulador la gestiona de forma cíclica.</p>
               </div>
+
               <div className="p-4 bg-orange-50 rounded-lg">
                 <h4 className="font-semibold text-orange-800 mb-2">Mayor Dedicación</h4>
-                <p>Se computa a partir de <strong>8h 13min</strong> de jornada natural.</p>
+                <p>Horas naturales de jornada ordinaria que exceden de <strong>8h 13min</strong> en un turno.</p>
+                <p className="mt-1">Se acumulan diariamente en el <strong>cómputo mensual de excesos y mermas</strong> junto con las mermas de descanso.</p>
+                <p className="mt-1 text-xs text-gray-600">En caso de enlace de jornada (empalme), la mayor dedicación se calcula sobre la jornada fusionada total.</p>
               </div>
+
+              <div className="p-4 bg-indigo-50 rounded-lg">
+                <h4 className="font-semibold text-indigo-800 mb-2">Intervalos y Servicios</h4>
+                <p><strong>Tiempo efectivo:</strong> servicios en trenes (T, toma+deje 15min c/u), servicios en estaciones (reserva, ATTs), e intervalos entre servicios efectivos &lt;90min.</p>
+                <p className="mt-1"><strong>Tiempo no efectivo:</strong> viajes sin servicio (SS) y esperas (≥90min entre servicios; 15min previos a SS al inicio del turno; tiempo desde deje hasta primer tren de regreso).</p>
+                <p className="mt-1 text-xs text-gray-600">Solo se descuenta el intervalo no efectivo de mayor duración. Máximo 6h de SS por ciclo.</p>
+              </div>
+
+              <div className="p-4 bg-yellow-50 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-2">Descanso Diario Entre Turnos</h4>
+                <p><strong>En residencia:</strong></p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-xs">
+                  <li>Descanso mínimo completo: <strong>14h</strong></li>
+                  <li>Mínimo para finalizar jornada: <strong>10h</strong></li>
+                  <li>Si ≥10h y &lt;14h → <strong>merma de descanso</strong> (14h − tiempo)</li>
+                  <li>Si &lt;10h → <strong>enlace de jornada</strong></li>
+                </ul>
+                <p className="mt-2"><strong>Fuera de residencia:</strong></p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-xs">
+                  <li>Descanso mínimo completo: <strong>9h</strong></li>
+                  <li>Mínimo para finalizar jornada: <strong>6h</strong></li>
+                  <li>Si ≥6h y &lt;9h → <strong>merma de descanso</strong> (9h − tiempo)</li>
+                  <li>Si &lt;6h → <strong>enlace de jornada</strong></li>
+                </ul>
+              </div>
+
               <div className="p-4 bg-red-50 rounded-lg">
-                <h4 className="font-semibold text-red-800 mb-2">Horas Extra</h4>
-                <p>Se computan a partir de <strong>36h 05min</strong> por ciclo de 5 días trabajados.</p>
+                <h4 className="font-semibold text-red-800 mb-2">Enlace de Jornada (Empalme)</h4>
+                <p>Si el descanso no alcanza el mínimo para finalizar jornada, el tiempo desde el inicio del primer turno hasta el fin del segundo se computa como <strong>una única jornada ordinaria</strong>.</p>
+                <p className="mt-1 text-xs text-gray-600">Cálculo: (turno1 + descanso + turno2) − 8h13min = mayor dedicación del empalme. Solo puede producirse por retrasos en la circulación, nunca en gráfico.</p>
               </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Descanso Semanal (Art. 2.49)</h4>
-                <p>Mínimo <strong>62 horas</strong> continuadas (14h último descanso + 48h).</p>
+
+              <div className="p-4 bg-teal-50 rounded-lg">
+                <h4 className="font-semibold text-teal-800 mb-2">Descanso Entre Ciclos (ciclo normal 5 días)</h4>
+                <p>Tabla normativa según tiempo alcanzado:</p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-xs">
+                  <li><strong>≥62h:</strong> Descanso completo — OK</li>
+                  <li><strong>≥48h y &lt;62h:</strong> Merma de descanso en último turno (62h − tiempo)</li>
+                  <li><strong>≥38h y &lt;48h:</strong> 1 descanso ordinario no disfrutado</li>
+                  <li><strong>≥24h y &lt;38h:</strong> 1 descanso no disfrutado + merma (38h − tiempo)</li>
+                  <li><strong>&lt;24h:</strong> 2 descansos ordinarios no disfrutados</li>
+                </ul>
+                <p className="mt-1 text-xs text-gray-600">Ciclos reducidos (3 días): mínimo 38h. &lt;38h → merma; &lt;24h → 1 descanso no disfrutado. El mínimo grafiado en ciclos normales es 62h; en reducidos, 38h.</p>
               </div>
-              <div className="p-4 bg-yellow-50 rounded-lg">
-                <h4 className="font-semibold text-yellow-800 mb-2">Descanso Fuera de Residencia</h4>
-                <p><strong>Normal:</strong> ≥9h | <strong>Merma:</strong> &lt;9h y ≥6h | <strong>Empalme:</strong> &lt;6h</p>
+
+              <div className="p-4 bg-green-50 rounded-lg">
+                <h4 className="font-semibold text-green-800 mb-2">Jornada Cíclica y Horas Extraordinarias</h4>
+                <p><strong>Jornada cíclica</strong> = suma jornada efectiva de todos los turnos del ciclo + <strong>50% de los SS</strong> del ciclo.</p>
+                <p className="mt-1"><strong>Máximo cíclico</strong> = nº días trabajo × <strong>7h 13min</strong>.</p>
+                <p className="mt-1">El exceso sobre el máximo cíclico son <strong>horas extraordinarias</strong>, que se acumulan al final de cada ciclo en el fondo de compensación.</p>
+                <p className="mt-1 text-xs text-gray-600">Los ciclos solo pueden cerrarse cuando el ciclo tiene todos sus días computados. Si el último ciclo del mes incluye días del mes siguiente, se imputa al mes siguiente.</p>
               </div>
-              <div className="p-4 bg-yellow-50 rounded-lg">
-                <h4 className="font-semibold text-yellow-800 mb-2">Descanso en Residencia</h4>
-                <p><strong>Normal:</strong> ≥14h | <strong>Merma:</strong> &lt;14h y ≥10h | <strong>Empalme:</strong> &lt;10h</p>
+
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <h4 className="font-semibold text-purple-800 mb-2">Cómputo Mensual y Fondo de Compensación</h4>
+                <p><strong>Cómputo mensual:</strong> acumula mayor dedicación + mermas de descanso diario. Se cierra al final del último ciclo completo del mes.</p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-xs">
+                  <li>Si total <strong>≤30h</strong>: se pierde, no genera compensación.</li>
+                  <li>Si total <strong>&gt;30h</strong>: el exceso pasa al fondo de compensación.</li>
+                  <li>Límite <strong>grafiado: 25h</strong> — no se pueden grafiar ciclos que superen este valor.</li>
+                </ul>
+                <p className="mt-2"><strong>Fondo de compensación:</strong> acumula horas extraordinarias (exceso jornada cíclica) + exceso del cómputo mensual sobre 30h. Sin caducidad.</p>
+                <p className="mt-1 text-xs text-gray-600">Cada <strong>7h 13min</strong> acumuladas en el fondo → 1 descanso compensatorio. A disfrutar en las 14 semanas siguientes al cierre del mes en que se generó.</p>
               </div>
-              <div className="p-4 bg-purple-50 rounded-lg col-span-full">
-                <h4 className="font-semibold text-purple-800 mb-2">Empalme de Jornada</h4>
-                <p>Cuando el descanso es inferior al mínimo de empalme, las dos jornadas se suman como una sola.</p>
-                <p className="mt-1"><strong>Cálculo:</strong> Total horas ambas jornadas - 8h 13min = Mayor dedicación</p>
+
+              <div className="p-4 bg-gray-50 rounded-lg col-span-full">
+                <h4 className="font-semibold text-gray-700 mb-2">Descansos Compensatorios — Días de Descanso No Disfrutados</h4>
+                <p>Cuando no se disfruta un descanso ordinario (por descanso entre ciclos insuficiente), se tiene derecho a un <strong>descanso alternativo</strong>. Los días del ciclo en que se compensan estos descansos computan con una jornada efectiva de <strong>7h 13min</strong> para la tasación de dicho ciclo.</p>
+                <p className="mt-1 text-xs text-gray-600">Los descansos compensatorios (generados por el fondo de compensación) también deben disfrutarse en las 14 semanas siguientes al cierre del mes en que se generaron.</p>
               </div>
             </div>
           </SeccionColapsable>
