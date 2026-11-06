@@ -6,6 +6,12 @@ import autoTable from 'jspdf-autotable';
 import SeccionColapsable from "./SeccionColapsable";
 import CSVHelpModal from "./CSVHelpModal";
 import UserGuideModal from "./UserGuideModal";
+import MarcoReguladorModal from "./MarcoReguladorModal";
+import useDarkMode from "./useDarkMode";
+import OnboardingTour, { TOUR_KEY } from "./OnboardingTour";
+
+// Marco Regulador 2.31: mayor dedicación = exceso de 9 horas naturales dentro de la misma jornada.
+const MAYOR_DEDICACION_UMBRAL = 540; // 9h
 
 
 const DEFAULT_CSV_DATA = `CLAVE,LMXJVSD,N_CIRC,N_VENTA,SERV,IJ,PRES,SAL,DESDE,HASTA,LLEG,DEJ,FJ
@@ -68,6 +74,11 @@ const ScheduleAnalyzer = () => {
   const [csvFileName, setCsvFileName] = useState(null); // Para mostrar nombre del archivo cargado
   const [delayOverrides, setDelayOverrides] = useState({}); // { día: minutosRetraso }
   const [showUserGuide, setShowUserGuide] = useState(false); // Muestra la guía de usuario
+  const [showMarco, setShowMarco] = useState(false); // Muestra el Marco Regulador
+  const [dark, toggleDark] = useDarkMode();
+  const [showTour, setShowTour] = useState(() => {
+    try { return !localStorage.getItem(TOUR_KEY); } catch { return false; }
+  });
 
   const parseData = () => {
     const lines = csvData.trim().split('\n');
@@ -899,8 +910,8 @@ const ScheduleAnalyzer = () => {
       const adjustedTotalShiftMinutes = totalShiftMinutes + delayMinutes;
       const adjustedEndTime = endTime !== null ? endTime + delayMinutes : null;
 
-      // Calcular mayor dedicación con el retraso (umbral: 8h 13min = 493 min)
-      const adjustedMayorDedicacionMinutes = Math.max(0, adjustedTotalShiftMinutes - 493);
+      // Calcular mayor dedicación con el retraso (umbral: 9h = 540 min, Marco Regulador 2.31)
+      const adjustedMayorDedicacionMinutes = Math.max(0, adjustedTotalShiftMinutes - MAYOR_DEDICACION_UMBRAL);
 
       results.push({
         day,
@@ -1024,7 +1035,6 @@ const ScheduleAnalyzer = () => {
   // =============================================
 
   // Constantes normativas
-  const MAYOR_DEDICACION_UMBRAL = 493;   // 8h 13min — umbral jornada ordinaria para mayor dedicación
   const JORNADA_EFECTIVA_MAXIMA = 433;   // 7h 13min — jornada efectiva máxima por turno/día
   const DESCANSO_MIN_RESIDENCIA = 840;   // 14h — descanso diario mínimo completo en residencia
   const DESCANSO_EMPALME_RESIDENCIA = 600; // 10h — mínimo para finalizar jornada en residencia
@@ -1117,7 +1127,7 @@ const ScheduleAnalyzer = () => {
       const day = workDaysSeq[i];
       if (enlaceSet.has(i)) continue; // turno absorbido por enlace, no computar dos veces
 
-      // Mayor dedicación (jornada ordinaria > 8h 13min)
+      // Mayor dedicación (jornada ordinaria > 9h)
       if (day.mayorDedicacionMinutes > 0) {
         summary.totalMayorDedicacion += day.mayorDedicacionMinutes;
         warnings.push({
@@ -1126,7 +1136,7 @@ const ScheduleAnalyzer = () => {
           key: day.key,
           dayName: day.dayName,
           value: day.mayorDedicacionMinutes,
-          message: `Día ${day.day} (Clave ${day.key}): Mayor dedicación de ${formatMinutes(day.mayorDedicacionMinutes)} — jornada ordinaria de ${formatMinutes(day.totalShiftMinutes)} supera las 8h 13min`
+          message: `Día ${day.day} (Clave ${day.key}): Mayor dedicación de ${formatMinutes(day.mayorDedicacionMinutes)} — jornada ordinaria de ${formatMinutes(day.totalShiftMinutes)} supera las 9h`
         });
       }
 
@@ -1604,8 +1614,8 @@ const ScheduleAnalyzer = () => {
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 bg-gray-50 min-h-screen">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Análisis de Gráfico de Interventores Renfe</h1>
-        <div className="flex flex-wrap gap-2">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Análisis de Gráfico de Interventores Renfe Media Distancia</h1>
+        <div className="flex flex-wrap gap-2" data-tour="herramientas">
           <button
             onClick={exportToExcel}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
@@ -1626,10 +1636,31 @@ const ScheduleAnalyzer = () => {
           >
             <span>📖</span> Guía de Usuario
           </button>
+          <button
+            onClick={() => setShowMarco(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+          >
+            <span>⚖️</span> Marco Regulador
+          </button>
+          <button
+            onClick={() => setShowTour(true)}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+            title="Repetir el recorrido guiado"
+          >
+            <span>🧭</span> Recorrido
+          </button>
+          <button
+            onClick={toggleDark}
+            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-md"
+            title={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+            aria-label={dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          >
+            <span>{dark ? "☀️" : "🌙"}</span> {dark ? "Claro" : "Oscuro"}
+          </button>
         </div>
       </div>
         {/* Carga de CSV */}
-        <div className="bg-white p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
+        <div data-tour="csv" className="bg-white p-3 sm:p-4 rounded-lg shadow-md mb-4 sm:mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex items-center gap-2">
                     <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm font-medium transition-colors">
@@ -1688,7 +1719,7 @@ const ScheduleAnalyzer = () => {
         </div>
 
       {/* Pestañas de navegación */}
-      <div className="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
+      <div data-tour="pestanas" className="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex space-x-2 sm:space-x-4 min-w-max">
           <button
             onClick={() => setActiveTab('analysis')}
@@ -1718,7 +1749,7 @@ const ScheduleAnalyzer = () => {
         </nav>
       </div>
       
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+      <div data-tour="config" className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
         <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Configuración del análisis - {monthNames[selectedMonth]} {selectedYear} ({getDaysInMonth(selectedMonth, selectedYear)} días)</h2>
         <div className="flex gap-3 sm:gap-4 flex-wrap">
           <div>
@@ -2148,7 +2179,7 @@ const ScheduleAnalyzer = () => {
         <div className="space-y-4 sm:space-y-6">
           {/* Resumen ejecutivo */}
           <SeccionColapsable titulo="Resumen de Cumplimiento Normativo" icono="📋">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div data-tour="cumplimiento" className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
               <div className={`p-3 sm:p-4 rounded-lg border-l-4 ${analyzeCompliance.violations.length === 0 ? 'bg-green-50 border-green-500' : 'bg-red-50 border-red-500'}`}>
                 <h3 className="text-xs sm:text-sm font-medium text-gray-600">Total Infracciones</h3>
                 <p className={`text-2xl sm:text-3xl font-bold ${analyzeCompliance.violations.length === 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -2454,7 +2485,7 @@ const ScheduleAnalyzer = () => {
 
               <div className="p-4 bg-orange-50 rounded-lg">
                 <h4 className="font-semibold text-orange-800 mb-2">Mayor Dedicación</h4>
-                <p>Horas naturales de jornada ordinaria que exceden de <strong>8h 13min</strong> en un turno.</p>
+                <p>Horas naturales de jornada ordinaria que exceden de <strong>9h</strong> en un turno.</p>
                 <p className="mt-1">Se acumulan diariamente en el <strong>cómputo mensual de excesos y mermas</strong> junto con las mermas de descanso.</p>
                 <p className="mt-1 text-xs text-gray-600">En caso de enlace de jornada (empalme), la mayor dedicación se calcula sobre la jornada fusionada total.</p>
               </div>
@@ -2487,7 +2518,7 @@ const ScheduleAnalyzer = () => {
               <div className="p-4 bg-red-50 rounded-lg">
                 <h4 className="font-semibold text-red-800 mb-2">Enlace de Jornada (Empalme)</h4>
                 <p>Si el descanso no alcanza el mínimo para finalizar jornada, el tiempo desde el inicio del primer turno hasta el fin del segundo se computa como <strong>una única jornada ordinaria</strong>.</p>
-                <p className="mt-1 text-xs text-gray-600">Cálculo: (turno1 + descanso + turno2) − 8h13min = mayor dedicación del empalme. Solo puede producirse por retrasos en la circulación, nunca en gráfico.</p>
+                <p className="mt-1 text-xs text-gray-600">Cálculo: (turno1 + descanso + turno2) − 9h = mayor dedicación del empalme. Solo puede producirse por retrasos en la circulación, nunca en gráfico.</p>
               </div>
 
               <div className="p-4 bg-teal-50 rounded-lg">
@@ -2536,7 +2567,7 @@ const ScheduleAnalyzer = () => {
       {/* PESTAÑA: ANÁLISIS GENERAL (contenido original) */}
       {activeTab === 'analysis' && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div data-tour="resumen" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg shadow">
               <h3 className="text-sm font-medium text-gray-600">Horas Totales (mes)</h3>
               <p className="text-2xl font-bold text-blue-600">{monthlyStats.totalWorkedHours}h</p>
@@ -2731,6 +2762,15 @@ const ScheduleAnalyzer = () => {
       )}
       {showCSVHelp && (
         <CSVHelpModal onClose={() => setShowCSVHelp(false)} />
+      )}
+      {showTour && (
+        <OnboardingTour
+          onClose={() => setShowTour(false)}
+          setActiveTab={setActiveTab}
+        />
+      )}
+      {showMarco && (
+        <MarcoReguladorModal onClose={() => setShowMarco(false)} />
       )}
       {showUserGuide && (
         <UserGuideModal onClose={() => setShowUserGuide(false)} />

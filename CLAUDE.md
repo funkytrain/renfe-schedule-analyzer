@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a web application for analyzing Renfe train conductor schedules and verifying regulatory compliance. The app parses CSV files containing shift data and validates compliance with Spanish railway labor regulations.
+This is a web application for analyzing Renfe Media Distancia (Regionales) train conductor/interventor schedules and verifying regulatory compliance. The app parses CSV files containing shift data and validates compliance with Spanish railway labor regulations.
 
 **Tech Stack**: React 18 + Vite 5 + Tailwind CSS 3 + Recharts
 
@@ -67,6 +67,7 @@ The app uses React useState for:
 **Regulatory Limits** ([src/App.jsx:626-634](src/App.jsx#L626-L634)):
 - Daily max effective work: 9h (540min)
 - Daily max train service: 9h (540min)
+- Mayor dedicación threshold: 9h natural (540min) per shift (`MAYOR_DEDICACION_UMBRAL`, Marco Regulador 2.31)
 - Max shift duration: 11h natural (660min) - **CRITICAL VIOLATION**
 - Weekly rest minimum: 60h (3600min)
 - Disconnected rest minimum: 38h (2280min)
@@ -129,7 +130,7 @@ Or import GitHub repo directly in Vercel dashboard (auto-detects Vite configurat
 
 This app enforces collective bargaining agreement rules for Spanish railway conductors. Key concepts:
 
-- **Mayor dedicación**: Overtime when natural shift exceeds 8h 13min (493min)
+- **Mayor dedicación**: Overtime when natural shift exceeds 9h (540min) — art. 2.31 of the Marco Regulador
 - **Merma de descanso**: Rest period reduction penalties
 - **Empalme**: Consecutive shift with insufficient rest
 - **Pernocta**: Overnight stay (affects rest calculations)

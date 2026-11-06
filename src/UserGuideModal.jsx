@@ -105,7 +105,7 @@ export default function UserGuideModal({ onClose }) {
                   <tr><td className="p-2 border">Trabajo efectivo diario</td><td className="p-2 border font-medium">9 horas</td></tr>
                   <tr><td className="p-2 border">Servicio en trenes</td><td className="p-2 border font-medium">9 horas</td></tr>
                   <tr><td className="p-2 border">Duración total turno</td><td className="p-2 border font-medium text-red-600">11 horas (crítico)</td></tr>
-                  <tr><td className="p-2 border">Umbral mayor dedicación</td><td className="p-2 border font-medium">8h 13min</td></tr>
+                  <tr><td className="p-2 border">Umbral mayor dedicación</td><td className="p-2 border font-medium">9h</td></tr>
                   <tr><td className="p-2 border">Mayor dedicación + merma mensual</td><td className="p-2 border font-medium">25 horas</td></tr>
                   <tr><td className="p-2 border">Descanso semanal</td><td className="p-2 border font-medium">60 horas mínimo</td></tr>
                   <tr><td className="p-2 border">Descanso desvinculado</td><td className="p-2 border font-medium">38 horas mínimo</td></tr>
